@@ -60,7 +60,9 @@ export function OceanGlobe() {
     viewer.scene.globe.showWaterEffect = false;
 
     // Atmosphere
-    viewer.scene.skyAtmosphere.show = false;
+    if (viewer.scene.skyAtmosphere) {
+      viewer.scene.skyAtmosphere.show = false;
+    }
 
     // Smooth camera
     viewer.camera.flyTo({
