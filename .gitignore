@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Large scientific datasets
+GLORY/*.nc
+HYCOM/*.nc
+
+# macOS files
+.DS_Store
