@@ -49,12 +49,6 @@ export { useVisualization3D } from './hooks/useVisualization3D';
 
 // ── Types for components that need raw data shapes ──────────────────────────
 export type {
-  // Provider response types
-  ProviderResponse,
-  ProviderStatus,
-  OceanVariable,
-  Coordinates,
-  Bounds,
   // Comparison
   ComparisonDisplayData,
   HealthDisplayData,
@@ -75,6 +69,12 @@ export type {
 } from './adapters';
 
 export type {
+  // Provider response types
+  ProviderResponse,
+  ProviderStatus,
+  OceanVariable,
+  Coordinates,
+  Bounds,
   // Raw provider types (for advanced usage / future extensions)
   ModelComparisonResult,
   VerticalProfileResult,
