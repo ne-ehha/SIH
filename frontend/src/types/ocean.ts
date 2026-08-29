@@ -31,5 +31,5 @@ export interface VariableConfig {
   id: OceanVariable;
   label: string;
   unit: string;
-  colorScale: [string, string];
+  colorScale: string[];
 }

@@ -10,7 +10,7 @@ export const mockDiagnosticResult: DiagnosticResult = {
     'Persistent bias pattern across multiple time steps',
     'Similar bias observed in adjacent grid points',
   ],
-  status: 'success',
+  status: 'complete',
   errorFingerprint: 'SUBSURFACE_WARM_BIAS_MIXING',
 };
 
@@ -52,5 +52,5 @@ export const mockSolutions: SolutionRecommendation = {
   recommendedTest: 'Alternative vertical mixing configuration (k-ω vs k-ε)',
   expectedOutcome: 'Check whether subsurface temperature error decreases while surface accuracy is maintained',
   caution: 'This diagnostic analysis does not establish causality. Results should be validated against multiple independent observations.',
-  status: 'success',
+  status: 'complete',
 };
