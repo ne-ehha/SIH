@@ -1,12 +1,25 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { fileURLToPath } from 'url'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const cesiumSource = 'node_modules/cesium/Build/Cesium'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    viteStaticCopy({
+      targets: [
+        { src: `${cesiumSource}/ThirdParty`, dest: 'cesium', rename: { stripBase: 4 } },
+        { src: `${cesiumSource}/Workers`, dest: 'cesium', rename: { stripBase: 4 } },
+        { src: `${cesiumSource}/Assets`, dest: 'cesium', rename: { stripBase: 4 } },
+        { src: `${cesiumSource}/Widgets`, dest: 'cesium', rename: { stripBase: 4 } },
+      ],
+    }),
+  ],
   resolve: {
     alias: {
       '@': __dirname + '/src',

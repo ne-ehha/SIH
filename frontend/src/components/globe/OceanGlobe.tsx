@@ -5,8 +5,11 @@ import { useOceanStore } from '@/state/oceanStore';
 import { regions } from '@/config/regions';
 import { mockObservations } from '@/mocks/observations';
 
-// Set Cesium base URL for static assets
-(window as unknown as Record<string, string>).CESIUM_BASE_URL = '/cesium/';
+// Configure Cesium Ion access token from environment
+const cesiumIonToken = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN as string | undefined;
+if (cesiumIonToken) {
+  Cesium.Ion.defaultAccessToken = cesiumIonToken;
+}
 
 export function OceanGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
