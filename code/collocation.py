@@ -1,18 +1,20 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from model_loader import load_glorys
 from argo_loader import load_argo, apply_qc
 
 
 # ---------------------------------------------------------
-# SETTINGS
+# PROJECT PATHS
 # ---------------------------------------------------------
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 OUTPUT_FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+    PROJECT_ROOT / "processed" / "glorys_argo_collocation_2024.nc"
 )
 
 
@@ -117,248 +119,274 @@ def collocate_observations(glorys, argo):
         # ARGO OBSERVATIONS
         # -------------------------------------------------
 
-        obs_temp = float(obs.temperature.values)
-        obs_salinity = float(obs.salinity.values)
-
-        # -------------------------------------------------
-        # CHECK VALUES
-        # -------------------------------------------------
-
-        if not np.isfinite(model_temp):
-            continue
-
-        if not np.isfinite(model_salinity):
-            continue
-
-        if not np.isfinite(obs_temp):
-            continue
-
-        if not np.isfinite(obs_salinity):
-            continue
-
-        # -------------------------------------------------
-        # CALCULATE MODEL - OBSERVATION
-        # -------------------------------------------------
-
-        temperature_error = model_temp - obs_temp
-        salinity_error = model_salinity - obs_salinity
-
-        # -------------------------------------------------
-        # STORE MATCH
-        # -------------------------------------------------
-
-        results.append(
-            {
-                "time": obs_time,
-                "latitude": obs_lat,
-                "longitude": obs_lon,
-                "pressure": obs_pressure,
-
-                "platform_number": str(
-                    obs.platform_number.values
-                ),
-
-                "cycle_number": str(
-                    obs.cycle_number.values
-                ),
-
-                "argo_temperature": obs_temp,
-                "model_temperature": model_temp,
-                "temperature_error": temperature_error,
-
-                "argo_salinity": obs_salinity,
-                "model_salinity": model_salinity,
-                "salinity_error": salinity_error,
-            }
+        obs_temp = float(
+            obs.temperature.values
         )
 
-    return pd.DataFrame(results)
+        obs_salinity = float(
+            obs.salinity.values
+        )
+
+        # -------------------------------------------------
+        # ERROR
+        # -------------------------------------------------
+
+        temperature_error = (
+            model_temp - obs_temp
+        )
+
+        salinity_error = (
+            model_salinity - obs_salinity
+        )
+
+        # -------------------------------------------------
+        # STORE RESULT
+        # -------------------------------------------------
+
+        results.append({
+            "argo_temperature": obs_temp,
+            "model_temperature": model_temp,
+            "temperature_error": temperature_error,
+            "argo_salinity": obs_salinity,
+            "model_salinity": model_salinity,
+            "salinity_error": salinity_error,
+            "pressure": obs_pressure,
+            "latitude": obs_lat,
+            "longitude": obs_lon,
+            "time": obs_time,
+            "platform_number": str(
+                obs.platform_number.values
+            ),
+            "cycle_number": int(
+                obs.cycle_number.values
+            )
+        })
+
+    return results
 
 
 # ---------------------------------------------------------
-# PRINT SUMMARY
+# CREATE DATASET
 # ---------------------------------------------------------
 
-def print_summary(df):
+def create_dataset(results):
+
+    df = pd.DataFrame(results)
+
+    if df.empty:
+        raise RuntimeError(
+            "No observations were successfully collocated."
+        )
+
+    # Explicitly convert columns to standard NumPy types.
+    # This avoids pandas StringDtype problems when writing
+    # the dataset to NetCDF.
+
+    df["argo_temperature"] = (
+        pd.to_numeric(
+            df["argo_temperature"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["model_temperature"] = (
+        pd.to_numeric(
+            df["model_temperature"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["temperature_error"] = (
+        pd.to_numeric(
+            df["temperature_error"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["argo_salinity"] = (
+        pd.to_numeric(
+            df["argo_salinity"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["model_salinity"] = (
+        pd.to_numeric(
+            df["model_salinity"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["salinity_error"] = (
+        pd.to_numeric(
+            df["salinity_error"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["pressure"] = (
+        pd.to_numeric(
+            df["pressure"],
+            errors="coerce"
+        ).astype("float32")
+    )
+
+    df["latitude"] = (
+        pd.to_numeric(
+            df["latitude"],
+            errors="coerce"
+        ).astype("float64")
+    )
+
+    df["longitude"] = (
+        pd.to_numeric(
+            df["longitude"],
+            errors="coerce"
+        ).astype("float64")
+    )
+
+    df["time"] = pd.to_datetime(
+        df["time"]
+    )
+
+    df["platform_number"] = (
+        df["platform_number"]
+        .astype(str)
+    )
+
+    df["cycle_number"] = (
+        pd.to_numeric(
+            df["cycle_number"],
+            errors="coerce"
+        ).fillna(-1)
+        .astype("int64")
+    )
+
+    ds = xr.Dataset.from_dataframe(
+        df.set_index("time")
+    )
+
+    # Restore a simple observation dimension.
+    ds = ds.reset_index("time")
+
+    # Make sure time is explicitly datetime64.
+    ds["time"] = ds["time"].astype(
+        "datetime64[ns]"
+    )
+
+    return ds
+
+
+# ---------------------------------------------------------
+# SUMMARY
+# ---------------------------------------------------------
+
+def print_summary(ds):
 
     print("\n" + "=" * 60)
     print("MODEL–ARGO COLLOCATION SUMMARY")
     print("=" * 60)
 
-    print("\nMatched observations:")
-    print(len(df))
+    n = ds.sizes["time"]
 
-    if len(df) == 0:
-        print("\nWARNING: No valid matches were produced.")
-        return
+    print("\nMatched observations:")
+    print(n)
 
     print("\nTime:")
-    print(df["time"].min(), "to", df["time"].max())
+    print(
+        ds.time.min().values,
+        "to",
+        ds.time.max().values
+    )
 
     print("\nLatitude:")
     print(
-        df["latitude"].min(),
+        float(ds.latitude.min()),
         "to",
-        df["latitude"].max()
+        float(ds.latitude.max())
     )
 
     print("\nLongitude:")
     print(
-        df["longitude"].min(),
+        float(ds.longitude.min()),
         "to",
-        df["longitude"].max()
+        float(ds.longitude.max())
     )
 
     print("\nPressure:")
     print(
-        df["pressure"].min(),
+        float(ds.pressure.min()),
         "to",
-        df["pressure"].max(),
+        float(ds.pressure.max()),
         "dbar"
     )
 
-    # -----------------------------------------------------
-    # TEMPERATURE METRICS
-    # -----------------------------------------------------
-
-    temperature_bias = df["temperature_error"].mean()
-
-    temperature_rmse = np.sqrt(
-        np.mean(
-            df["temperature_error"] ** 2
-        )
-    )
-
-    temperature_mae = np.mean(
-        np.abs(df["temperature_error"])
-    )
-
     print("\nTemperature error:")
-    print("Mean bias:", temperature_bias)
-    print("MAE:", temperature_mae)
-    print("RMSE:", temperature_rmse)
 
-    # -----------------------------------------------------
-    # SALINITY METRICS
-    # -----------------------------------------------------
+    temp_error = ds.temperature_error.values
 
-    salinity_bias = df["salinity_error"].mean()
-
-    salinity_rmse = np.sqrt(
-        np.mean(
-            df["salinity_error"] ** 2
-        )
+    print(
+        "Mean bias:",
+        float(np.nanmean(temp_error))
     )
 
-    salinity_mae = np.mean(
-        np.abs(df["salinity_error"])
+    print(
+        "MAE:",
+        float(np.nanmean(np.abs(temp_error)))
+    )
+
+    print(
+        "RMSE:",
+        float(
+            np.sqrt(
+                np.nanmean(
+                    temp_error ** 2
+                )
+            )
+        )
     )
 
     print("\nSalinity error:")
-    print("Mean bias:", salinity_bias)
-    print("MAE:", salinity_mae)
-    print("RMSE:", salinity_rmse)
+
+    sal_error = ds.salinity_error.values
+
+    print(
+        "Mean bias:",
+        float(np.nanmean(sal_error))
+    )
+
+    print(
+        "MAE:",
+        float(np.nanmean(np.abs(sal_error)))
+    )
+
+    print(
+        "RMSE:",
+        float(
+            np.sqrt(
+                np.nanmean(
+                    sal_error ** 2
+                )
+            )
+        )
+    )
 
 
 # ---------------------------------------------------------
 # SAVE RESULTS
 # ---------------------------------------------------------
 
-def save_results(df):
+def save_results(ds):
 
-    # Convert IDs to ordinary NumPy Unicode arrays.
-    platform_numbers = (
-        df["platform_number"]
-        .astype(str)
-        .to_numpy(dtype="U20")
+    OUTPUT_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True
     )
 
-    cycle_numbers = (
-        df["cycle_number"]
-        .astype(str)
-        .to_numpy(dtype="U20")
+    ds.to_netcdf(
+        OUTPUT_FILE,
+        engine="netcdf4"
     )
-
-    ds = xr.Dataset(
-        {
-            "argo_temperature": (
-                "observation",
-                df["argo_temperature"].to_numpy()
-            ),
-
-            "model_temperature": (
-                "observation",
-                df["model_temperature"].to_numpy()
-            ),
-
-            "temperature_error": (
-                "observation",
-                df["temperature_error"].to_numpy()
-            ),
-
-            "argo_salinity": (
-                "observation",
-                df["argo_salinity"].to_numpy()
-            ),
-
-            "model_salinity": (
-                "observation",
-                df["model_salinity"].to_numpy()
-            ),
-
-            "salinity_error": (
-                "observation",
-                df["salinity_error"].to_numpy()
-            ),
-
-            "pressure": (
-                "observation",
-                df["pressure"].to_numpy()
-            ),
-
-            "latitude": (
-                "observation",
-                df["latitude"].to_numpy()
-            ),
-
-            "longitude": (
-                "observation",
-                df["longitude"].to_numpy()
-            ),
-
-            "time": (
-                "observation",
-                df["time"].to_numpy()
-            ),
-
-            "platform_number": (
-                "observation",
-                platform_numbers
-            ),
-
-            "cycle_number": (
-                "observation",
-                cycle_numbers
-            ),
-        }
-    )
-
-    ds.attrs["description"] = (
-        "GLORYS12V1 and Argo Delayed Mode "
-        "observation-level collocation"
-    )
-
-    ds.attrs["pressure_depth_assumption"] = (
-        "Argo pressure in dbar treated approximately "
-        "as depth in metres for initial collocation."
-    )
-
-    ds.attrs["argo_not_gridded"] = (
-        "Argo observations remain at their original "
-        "observation levels."
-    )
-
-    ds.to_netcdf(OUTPUT_FILE)
 
     print("\nSaved:")
     print(OUTPUT_FILE)
@@ -376,15 +404,23 @@ if __name__ == "__main__":
     print("Loading Argo...")
     argo = prepare_argo()
 
-    matched = collocate_observations(
+    results = collocate_observations(
         glorys,
         argo
     )
 
-    print_summary(matched)
+    matched = create_dataset(
+        results
+    )
 
-    if len(matched) > 0:
-        save_results(matched)
+    print_summary(
+        matched
+    )
 
-    print("\nCollocation complete.")
-    
+    save_results(
+        matched
+    )
+
+    print(
+        "\nCollocation complete."
+    )

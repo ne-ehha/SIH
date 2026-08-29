@@ -1,387 +1,420 @@
 import xarray as xr
 import numpy as np
+from pathlib import Path
 
 
-FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATH
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+INPUT_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 
-def load_data():
-    return xr.open_dataset(FILE)
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+print("Loading collocated dataset...")
+
+ds = xr.open_dataset(INPUT_FILE)
 
 
 # ---------------------------------------------------------
-# HELPER
+# CONVERT TO DATAFRAME
 # ---------------------------------------------------------
 
-def weighted_mean(values, weights):
-    values = np.asarray(values, dtype=float)
-    weights = np.asarray(weights, dtype=float)
+df = ds.to_dataframe().reset_index()
 
-    valid = np.isfinite(values) & np.isfinite(weights)
-
-    if not np.any(valid):
-        return np.nan
-
-    return np.average(
-        values[valid],
-        weights=weights[valid]
-    )
-
-
-# ---------------------------------------------------------
-# TEMPERATURE DEPTH EVIDENCE
-# ---------------------------------------------------------
-
-def temperature_depth_evidence(ds):
-
-    pressure = ds.pressure.values
-    error = ds.temperature_error.values
-
-    layers = {
-        "surface (0–50 dbar)": (0, 50),
-        "target layer (50–200 dbar)": (50, 200),
-        "deep (300–500 dbar)": (300, 500),
-    }
-
-    results = {}
-
-    for name, (low, high) in layers.items():
-
-        mask = (
-            (pressure >= low)
-            & (pressure < high)
-            & np.isfinite(error)
-        )
-
-        if np.sum(mask) == 0:
-            results[name] = {
-                "n": 0,
-                "bias": np.nan
-            }
-        else:
-            results[name] = {
-                "n": int(np.sum(mask)),
-                "bias": float(
-                    np.mean(error[mask])
-                )
-            }
-
-    return results
+df = df.dropna(
+    subset=[
+        "temperature_error",
+        "salinity_error",
+        "pressure",
+        "latitude",
+        "longitude",
+        "time",
+    ]
+)
 
 
 # ---------------------------------------------------------
-# HYPOTHESIS 1
+# UPPER-OCEAN TEMPERATURE HYPOTHESIS
 # ---------------------------------------------------------
 
-def hypothesis_vertical_structure(ds):
+target = df[
+    (df["pressure"] >= 50)
+    & (df["pressure"] < 200)
+]
 
-    results = temperature_depth_evidence(ds)
+surface = df[
+    df["pressure"] < 50
+]
 
-    surface = results["surface (0–50 dbar)"]
-    target = results["target layer (50–200 dbar)"]
-    deep = results["deep (300–500 dbar)"]
+deep = df[
+    df["pressure"] >= 300
+]
 
-    if target["n"] == 0:
-        return None
 
-    target_bias = target["bias"]
-    surface_bias = surface["bias"]
-    deep_bias = deep["bias"]
+target_bias = float(
+    target["temperature_error"].mean()
+)
 
-    difference_surface = (
-        target_bias - surface_bias
-    )
+surface_bias = float(
+    surface["temperature_error"].mean()
+)
 
-    difference_deep = (
-        target_bias - deep_bias
-    )
-
-    support = []
-
-    limitations = []
-
-    if target_bias > 0.3:
-        support.append(
-            f"Target-layer temperature bias is "
-            f"+{target_bias:.3f} °C."
-        )
-
-    if target["n"] >= 100:
-        support.append(
-            f"The target layer contains "
-            f"{target['n']} matched observations."
-        )
-
-    if abs(surface_bias) < 0.2:
-        support.append(
-            f"Surface bias is comparatively small "
-            f"({surface_bias:+.3f} °C)."
-        )
-
-    if abs(deep_bias) < 0.2:
-        support.append(
-            f"Deep-ocean bias is comparatively small "
-            f"({deep_bias:+.3f} °C)."
-        )
-
-    if abs(difference_surface) > 0.3:
-        support.append(
-            "The discrepancy changes substantially "
-            "between the surface and target layer."
-        )
-
-    limitations.append(
-        "The present dataset demonstrates a "
-        "model–observation discrepancy but does "
-        "not identify its physical cause."
-    )
-
-    limitations.append(
-        "Mixed-layer depth, stratification, surface "
-        "forcing and vertical-mixing diagnostics "
-        "have not yet been tested."
-    )
-
-    return {
-        "title":
-            "Possible upper-ocean vertical-structure discrepancy",
-
-        "hypothesis":
-            "Differences in the representation of "
-            "upper-ocean vertical thermal structure "
-            "may contribute to the observed temperature bias.",
-
-        "confidence":
-            "CANDIDATE — evidence-supported, "
-            "not causally established",
-
-        "support": support,
-
-        "limitations": limitations,
-
-        "next_tests": [
-            "Compare mixed-layer depth between datasets.",
-            "Compare vertical temperature gradients.",
-            "Examine ocean stratification.",
-            "Examine surface heat-flux or atmospheric forcing.",
-            "Examine vertical-mixing diagnostics if available.",
-            "Check whether the pattern persists across "
-            "additional months or years."
-        ]
-    }
+deep_bias = float(
+    deep["temperature_error"].mean()
+)
 
 
 # ---------------------------------------------------------
 # SALINITY SPATIAL HYPOTHESIS
 # ---------------------------------------------------------
 
-def salinity_spatial_evidence(ds):
+df["latitude_cell"] = (
+    df["latitude"] * 2
+).round() / 2
 
-    lat = ds.latitude.values
-    lon = ds.longitude.values
-    error = ds.salinity_error.values
+df["longitude_cell"] = (
+    df["longitude"] * 2
+).round() / 2
 
-    # Focus on the detected hotspot.
-    mask = (
-        (lat >= 13.25)
-        & (lat < 13.75)
-        & (lon >= 85.25)
-        & (lon < 85.75)
-        & np.isfinite(error)
+
+spatial = (
+    df.groupby(
+        [
+            "latitude_cell",
+            "longitude_cell",
+        ],
+        observed=True
     )
-
-    return {
-        "n": int(np.sum(mask)),
-        "bias": (
-            float(np.mean(error[mask]))
-            if np.any(mask)
-            else np.nan
-        )
-    }
-
-
-def hypothesis_salinity_hotspot(ds):
-
-    result = salinity_spatial_evidence(ds)
-
-    if result["n"] == 0:
-        return None
-
-    support = []
-    limitations = []
-
-    if abs(result["bias"]) >= 0.5:
-        support.append(
-            f"The localized salinity bias is "
-            f"{result['bias']:+.3f} PSU."
-        )
-
-    if result["n"] >= 30:
-        support.append(
-            f"The hotspot contains "
-            f"{result['n']} matched observations."
-        )
-
-    limitations.append(
-        "Spatial localization alone does not "
-        "establish the physical mechanism."
+    .agg(
+        n=("salinity_error", "size"),
+        salinity_bias=(
+            "salinity_error",
+            "mean"
+        ),
     )
+    .reset_index()
+)
 
-    limitations.append(
-        "The current analysis does not yet include "
-        "river discharge, precipitation, evaporation, "
-        "surface fluxes or regional circulation diagnostics."
+
+salinity_hotspot = (
+    spatial
+    .sort_values(
+        "salinity_bias",
+        key=lambda x: np.abs(x),
+        ascending=False
     )
-
-    return {
-        "title":
-            "Possible localized salinity-process discrepancy",
-
-        "hypothesis":
-            "The localized salinity mismatch may be "
-            "associated with regional processes or "
-            "model representation that vary spatially.",
-
-        "confidence":
-            "CANDIDATE — spatial evidence present, "
-            "mechanism unresolved",
-
-        "support": support,
-
-        "limitations": limitations,
-
-        "next_tests": [
-            "Examine nearby Argo profiles individually.",
-            "Check whether the hotspot persists across cycles.",
-            "Compare model and observation salinity profiles.",
-            "Investigate freshwater influence.",
-            "Examine precipitation and evaporation if available.",
-            "Examine regional ocean circulation.",
-            "Test the pattern using additional time periods."
-        ]
-    }
+    .iloc[0]
+)
 
 
 # ---------------------------------------------------------
-# OUTLIER HYPOTHESIS
+# OUTLIERS
 # ---------------------------------------------------------
 
-def outlier_investigation(ds):
+temperature_outliers = (
+    np.abs(
+        df["temperature_error"]
+    ) > 2
+)
 
-    temp = ds.temperature_error.values
-    sal = ds.salinity_error.values
+salinity_outliers = (
+    np.abs(
+        df["salinity_error"]
+    ) > 1
+)
 
-    temp_count = int(
-        np.sum(np.abs(temp) > 2)
-    )
 
-    sal_count = int(
-        np.sum(np.abs(sal) > 1)
-    )
+temperature_outlier_count = int(
+    temperature_outliers.sum()
+)
 
-    return {
-        "temperature": temp_count,
-        "salinity": sal_count
-    }
+salinity_outlier_count = int(
+    salinity_outliers.sum()
+)
 
 
 # ---------------------------------------------------------
 # REPORT
 # ---------------------------------------------------------
 
-def print_hypothesis(report):
-
-    print("\n" + "=" * 60)
-    print("HYPOTHESIS & EVIDENCE REPORT")
-    print("=" * 60)
-
-    print("\n" + report["title"])
-
-    print("\nCandidate hypothesis:")
-    print(report["hypothesis"])
-
-    print("\nEvidence status:")
-    print(report["confidence"])
-
-    print("\nSupporting evidence:")
-
-    for item in report["support"]:
-        print("  •", item)
-
-    print("\nLimitations / evidence gaps:")
-
-    for item in report["limitations"]:
-        print("  •", item)
-
-    print("\nRecommended investigation:")
-
-    for item in report["next_tests"]:
-        print("  •", item)
+print("\n" + "=" * 60)
+print("HYPOTHESIS & EVIDENCE REPORT")
+print("=" * 60)
 
 
-# ---------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------
+# =========================================================
+# HYPOTHESIS 1
+# =========================================================
 
-def main():
-
-    print("Loading collocated dataset...")
-
-    ds = load_data()
-
-    reports = []
-
-    temperature_report = (
-        hypothesis_vertical_structure(ds)
-    )
-
-    salinity_report = (
-        hypothesis_salinity_hotspot(ds)
-    )
-
-    if temperature_report is not None:
-        reports.append(
-            temperature_report
-        )
-
-    if salinity_report is not None:
-        reports.append(
-            salinity_report
-        )
-
-    for report in reports:
-        print_hypothesis(report)
-
-    outliers = outlier_investigation(ds)
-
-    print("\n" + "=" * 60)
-    print("OUTLIER INVESTIGATION TARGETS")
-    print("=" * 60)
-
-    print(
-        "\nTemperature:",
-        outliers["temperature"],
-        "observations with |error| > 2 °C"
-    )
-
-    print(
-        "Salinity:",
-        outliers["salinity"],
-        "observations with |error| > 1 PSU"
-    )
-
-    print(
-        "\nThese remain investigation targets "
-        "rather than automatically rejected observations."
-    )
-
-    print(
-        "\nHypothesis analysis complete."
-    )
+print("\nPossible upper-ocean vertical-structure discrepancy")
+print("-" * 60)
 
 
-if __name__ == "__main__":
-    main()
+print(
+    "\nCandidate hypothesis:"
+)
+
+print(
+    "Differences in the representation of upper-ocean "
+    "vertical thermal structure may contribute to the "
+    "observed temperature bias."
+)
+
+
+print(
+    "\nEvidence status:"
+)
+
+print(
+    "CANDIDATE — evidence-supported, not causally established"
+)
+
+
+print(
+    "\nSupporting evidence:"
+)
+
+print(
+    f"  • Target-layer temperature bias = "
+    f"{target_bias:.3f} °C."
+)
+
+print(
+    f"  • Target layer contains "
+    f"{len(target)} matched observations."
+)
+
+print(
+    f"  • Surface bias = "
+    f"{surface_bias:.3f} °C."
+)
+
+print(
+    f"  • Deep-ocean bias = "
+    f"{deep_bias:.3f} °C."
+)
+
+print(
+    "  • The discrepancy changes substantially "
+    "between surface, target, and deep layers."
+)
+
+
+print(
+    "\nLimitations / evidence gaps:"
+)
+
+print(
+    "  • The present dataset demonstrates a "
+    "model–observation discrepancy but does not "
+    "identify its physical cause."
+)
+
+print(
+    "  • Mixed-layer depth, stratification, surface "
+    "forcing and vertical-mixing diagnostics have "
+    "not yet been fully tested."
+)
+
+
+print(
+    "\nRecommended investigation:"
+)
+
+print(
+    "  • Compare mixed-layer depth between datasets."
+)
+
+print(
+    "  • Compare vertical temperature gradients."
+)
+
+print(
+    "  • Examine ocean stratification."
+)
+
+print(
+    "  • Examine surface heat-flux or atmospheric forcing."
+)
+
+print(
+    "  • Examine vertical-mixing diagnostics if available."
+)
+
+print(
+    "  • Check whether the pattern persists across "
+    "additional months or years."
+)
+
+
+# =========================================================
+# HYPOTHESIS 2
+# =========================================================
+
+print("\n" + "=" * 60)
+print("Possible localized salinity-process discrepancy")
+print("=" * 60)
+
+
+print(
+    "\nCandidate hypothesis:"
+)
+
+print(
+    "The localized salinity mismatch may be associated "
+    "with regional processes or model representation "
+    "that vary spatially."
+)
+
+
+print(
+    "\nEvidence status:"
+)
+
+print(
+    "CANDIDATE — spatial evidence present, mechanism unresolved"
+)
+
+
+print(
+    "\nSupporting evidence:"
+)
+
+print(
+    f"  • Largest localized salinity bias = "
+    f"{salinity_hotspot['salinity_bias']:.3f} PSU."
+)
+
+print(
+    f"  • Approximate location = "
+    f"{salinity_hotspot['latitude_cell']:.1f}°N, "
+    f"{salinity_hotspot['longitude_cell']:.1f}°E."
+)
+
+print(
+    f"  • Hotspot contains "
+    f"{int(salinity_hotspot['n'])} matched observations."
+)
+
+
+print(
+    "\nLimitations / evidence gaps:"
+)
+
+print(
+    "  • Spatial localization alone does not establish "
+    "the physical mechanism."
+)
+
+print(
+    "  • River discharge, precipitation, evaporation, "
+    "surface fluxes and regional circulation have not "
+    "yet been tested."
+)
+
+
+print(
+    "\nRecommended investigation:"
+)
+
+print(
+    "  • Examine nearby Argo profiles individually."
+)
+
+print(
+    "  • Check whether the hotspot persists across cycles."
+)
+
+print(
+    "  • Compare model and observation salinity profiles."
+)
+
+print(
+    "  • Investigate possible freshwater influence."
+)
+
+print(
+    "  • Examine precipitation and evaporation if available."
+)
+
+print(
+    "  • Examine regional ocean circulation."
+)
+
+print(
+    "  • Test the pattern using additional time periods."
+)
+
+
+# =========================================================
+# OUTLIER INVESTIGATION
+# =========================================================
+
+print("\n" + "=" * 60)
+print("OUTLIER INVESTIGATION TARGETS")
+print("=" * 60)
+
+
+print(
+    f"\nTemperature: "
+    f"{temperature_outlier_count} observations "
+    f"with |error| > 2 °C"
+)
+
+
+print(
+    f"Salinity: "
+    f"{salinity_outlier_count} observations "
+    f"with |error| > 1 PSU"
+)
+
+
+print(
+    "\nThese remain investigation targets rather than "
+    "automatically rejected observations."
+)
+
+
+# =========================================================
+# SCIENTIFIC CAUTION
+# =========================================================
+
+print("\n" + "=" * 60)
+print("SCIENTIFIC CAUTION")
+print("=" * 60)
+
+
+print(
+    """
+The analysis identifies candidate explanations
+supported by currently available evidence.
+
+It does NOT establish a single confirmed physical cause.
+
+Possible explanations include:
+
+  • Upper-ocean vertical structure or mixing
+  • Surface or atmospheric forcing
+  • Sampling or collocation effects
+  • Data-assimilation or reanalysis effects
+  • Other regional oceanographic processes
+
+Each explanation requires additional independent
+evidence before a causal conclusion can be made.
+"""
+)
+
+
+print(
+    "\nHypothesis analysis complete."
+)

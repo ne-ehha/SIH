@@ -1,524 +1,705 @@
 import xarray as xr
 import numpy as np
+from pathlib import Path
+
 import gsw
 
 
-COLLOCATED_FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATHS
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+COLLOCATION_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 GLORYS_FILE = (
-    "/Users/nehasreeraj/Downloads/"
-    "cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
+    PROJECT_ROOT
+    / "GLORY"
+    / "cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
 )
 
 
 # ---------------------------------------------------------
-# LOAD
+# SETTINGS
 # ---------------------------------------------------------
 
-def load_data():
+MAX_PROFILES = 100
 
-    print("Loading collocated observations...")
-    collocated = xr.open_dataset(COLLOCATED_FILE)
-
-    print("Loading GLORYS...")
-    glorys = xr.open_dataset(GLORYS_FILE)
-
-    return collocated, glorys
+TARGET_MIN_DEPTH = 50
+TARGET_MAX_DEPTH = 200
 
 
 # ---------------------------------------------------------
-# TEOS-10 PROFILE
+# LOAD DATA
 # ---------------------------------------------------------
 
-def calculate_teos10_profile(
-    depth,
-    latitude,
-    longitude,
-    temperature,
-    salinity
-):
+print("Loading collocated observations...")
+collocated = xr.open_dataset(
+    COLLOCATION_FILE
+)
 
-    depth = np.asarray(depth, dtype=float)
-    temperature = np.asarray(
-        temperature,
+print("Loading GLORYS...")
+glorys = xr.open_dataset(
+    GLORYS_FILE
+)
+
+
+# ---------------------------------------------------------
+# CONVERT COLLOCATION TO DATAFRAME
+# ---------------------------------------------------------
+
+df = collocated.to_dataframe().reset_index()
+
+df = df.dropna(
+    subset=[
+        "temperature_error",
+        "pressure",
+        "latitude",
+        "longitude",
+        "time",
+    ]
+)
+
+
+# ---------------------------------------------------------
+# IDENTIFY PROFILES
+# ---------------------------------------------------------
+
+if "platform_number" in df.columns:
+
+    if "cycle_number" in df.columns:
+
+        profile_groups = df.groupby(
+            [
+                "platform_number",
+                "cycle_number",
+            ]
+        )
+
+    else:
+
+        profile_groups = df.groupby(
+            ["platform_number"]
+        )
+
+else:
+
+    # Fallback if profile identifiers are unavailable.
+    df["profile_id"] = (
+        df["latitude"].round(2).astype(str)
+        + "_"
+        + df["longitude"].round(2).astype(str)
+        + "_"
+        + df["time"].astype(str)
+    )
+
+    profile_groups = df.groupby(
+        "profile_id"
+    )
+
+
+# ---------------------------------------------------------
+# DIAGNOSTIC STORAGE
+# ---------------------------------------------------------
+
+temperature_errors = []
+temperature_gradients = []
+density_gradients = []
+
+processed_profiles = 0
+
+
+# ---------------------------------------------------------
+# PROFILE ANALYSIS
+# ---------------------------------------------------------
+
+for profile_id, profile in profile_groups:
+
+    if processed_profiles >= MAX_PROFILES:
+        break
+
+    profile = profile.sort_values(
+        "pressure"
+    )
+
+    if len(profile) < 3:
+        continue
+
+    latitude = float(
+        profile["latitude"].iloc[0]
+    )
+
+    longitude = float(
+        profile["longitude"].iloc[0]
+    )
+
+    time = profile["time"].iloc[0]
+
+    # -----------------------------------------------------
+    # CHECK TARGET-LAYER COVERAGE
+    # -----------------------------------------------------
+
+    target_profile = profile[
+        (profile["pressure"] >= TARGET_MIN_DEPTH)
+        & (profile["pressure"] <= TARGET_MAX_DEPTH)
+    ]
+
+    if len(target_profile) < 3:
+        continue
+
+    # -----------------------------------------------------
+    # MODEL PROFILE EXTRACTION
+    # -----------------------------------------------------
+
+    try:
+
+        model_profile = glorys.interp(
+            time=np.datetime64(time),
+            latitude=latitude,
+            longitude=longitude,
+            method="linear"
+        )
+
+    except Exception:
+        continue
+
+    # -----------------------------------------------------
+    # MODEL TEMPERATURE
+    # -----------------------------------------------------
+
+    if "thetao" not in model_profile:
+        continue
+
+    model_temperature = (
+        model_profile["thetao"]
+        .values
+    )
+
+    model_depth = (
+        glorys["depth"]
+        .values
+    )
+
+    model_temperature = np.asarray(
+        model_temperature,
         dtype=float
     )
-    salinity = np.asarray(
-        salinity,
+
+    model_depth = np.asarray(
+        model_depth,
         dtype=float
     )
 
-    valid = (
-        np.isfinite(depth)
-        & np.isfinite(temperature)
-        & np.isfinite(salinity)
+    valid_model = (
+        np.isfinite(model_depth)
+        & np.isfinite(model_temperature)
     )
 
-    depth = depth[valid]
-    temperature = temperature[valid]
-    salinity = salinity[valid]
+    model_depth = model_depth[
+        valid_model
+    ]
 
-    if len(depth) < 3:
-        return None
+    model_temperature = model_temperature[
+        valid_model
+    ]
 
-    # GLORYS depth is positive downward.
-    # TEOS-10 pressure requires latitude.
+    if len(model_depth) < 3:
+        continue
+
+    # -----------------------------------------------------
+    # TARGET-LAYER MODEL PROFILE
+    # -----------------------------------------------------
+
+    target_model_mask = (
+        (model_depth >= TARGET_MIN_DEPTH)
+        & (model_depth <= TARGET_MAX_DEPTH)
+    )
+
+    target_model_depth = (
+        model_depth[target_model_mask]
+    )
+
+    target_model_temperature = (
+        model_temperature[target_model_mask]
+    )
+
+    if len(target_model_depth) < 3:
+        continue
+
+    # -----------------------------------------------------
+    # MODEL TEMPERATURE GRADIENT
+    # -----------------------------------------------------
+
+    temperature_gradient = np.gradient(
+        target_model_temperature,
+        target_model_depth
+    )
+
+    mean_temperature_gradient = float(
+        np.nanmean(
+            np.abs(
+                temperature_gradient
+            )
+        )
+    )
+
+    # -----------------------------------------------------
+    # TEOS-10 DENSITY
+    # -----------------------------------------------------
+
+    # GLORYS salinity is practical salinity.
+    # For contextual diagnostics we use it as SP.
+
+    if "so" not in model_profile:
+        continue
+
+    model_salinity = (
+        model_profile["so"]
+        .values
+    )
+
+    model_salinity = np.asarray(
+        model_salinity,
+        dtype=float
+    )
+
+    model_salinity = model_salinity[
+        valid_model
+    ]
+
+    if len(model_salinity) != len(
+        model_depth
+    ):
+        continue
+
+    target_model_salinity = (
+        model_salinity[target_model_mask]
+    )
+
+    if len(target_model_salinity) != len(
+        target_model_depth
+    ):
+        continue
+
+    valid_density = (
+        np.isfinite(
+            target_model_salinity
+        )
+        & np.isfinite(
+            target_model_temperature
+        )
+        & np.isfinite(
+            target_model_depth
+        )
+    )
+
+    if valid_density.sum() < 3:
+        continue
+
+    salinity = (
+        target_model_salinity[
+            valid_density
+        ]
+    )
+
+    temperature = (
+        target_model_temperature[
+            valid_density
+        ]
+    )
+
+    depth = (
+        target_model_depth[
+            valid_density
+        ]
+    )
+
+    # Approximate pressure from depth.
     pressure = gsw.p_from_z(
         -depth,
         latitude
     )
 
-    # Practical Salinity -> Absolute Salinity
-    SA = gsw.SA_from_SP(
-        salinity,
-        pressure,
-        longitude,
-        latitude
+    # Convert SP -> Absolute Salinity.
+    absolute_salinity = (
+        gsw.SA_from_SP(
+            salinity,
+            pressure,
+            longitude,
+            latitude
+        )
     )
 
-    # Potential temperature -> Conservative Temperature
-    CT = gsw.CT_from_pt(
-        SA,
-        temperature
+    # Conservative Temperature.
+    conservative_temperature = (
+        gsw.CT_from_t(
+            absolute_salinity,
+            temperature,
+            pressure
+        )
     )
 
-    # In-situ density
-    rho = gsw.rho(
-        SA,
-        CT,
+    # In-situ density.
+    density = gsw.rho(
+        absolute_salinity,
+        conservative_temperature,
         pressure
     )
 
-    # Vertical density gradient
+    # -----------------------------------------------------
+    # DENSITY GRADIENT
+    # -----------------------------------------------------
+
     density_gradient = np.gradient(
-        rho,
+        density,
         depth
     )
 
-    # Vertical temperature gradient
-    temperature_gradient = np.gradient(
-        temperature,
-        depth
+    mean_density_gradient = float(
+        np.nanmean(
+            np.abs(
+                density_gradient
+            )
+        )
     )
 
-    return {
-        "depth": depth,
-        "pressure": pressure,
-        "SA": SA,
-        "CT": CT,
-        "rho": rho,
-        "density_gradient": density_gradient,
-        "temperature_gradient": temperature_gradient
-    }
+    # -----------------------------------------------------
+    # PROFILE TEMPERATURE ERROR
+    # -----------------------------------------------------
+
+    profile_error = float(
+        target_profile[
+            "temperature_error"
+        ].mean()
+    )
+
+    if not np.isfinite(
+        profile_error
+    ):
+        continue
+
+    if not np.isfinite(
+        mean_temperature_gradient
+    ):
+        continue
+
+    if not np.isfinite(
+        mean_density_gradient
+    ):
+        continue
+
+    temperature_errors.append(
+        profile_error
+    )
+
+    temperature_gradients.append(
+        mean_temperature_gradient
+    )
+
+    density_gradients.append(
+        mean_density_gradient
+    )
+
+    processed_profiles += 1
 
 
 # ---------------------------------------------------------
-# LAYER MEAN
+# RESULTS
 # ---------------------------------------------------------
 
-def layer_mean(
-    depth,
-    values,
-    low,
-    high
+print("\n" + "=" * 60)
+print("TEOS-10 CONTEXTUAL DIAGNOSTICS")
+print("=" * 60)
+
+
+print(
+    "\nPurpose:"
+)
+
+print(
+    "Test whether the observed temperature discrepancy "
+    "is associated with modeled vertical thermal or "
+    "density structure."
+)
+
+
+print(
+    "\nScientific caution:"
+)
+
+print(
+    "A statistical association does not establish that "
+    "stratification or mixing caused the model error."
+)
+
+
+print(
+    f"\nProfiles successfully processed: "
+    f"{processed_profiles}"
+)
+
+
+# ---------------------------------------------------------
+# CORRELATION FUNCTION
+# ---------------------------------------------------------
+
+def safe_correlation(
+    x,
+    y
 ):
 
-    mask = (
-        (depth >= low)
-        & (depth < high)
-        & np.isfinite(values)
+    x = np.asarray(
+        x,
+        dtype=float
     )
 
-    if np.sum(mask) == 0:
-        return np.nan, 0
+    y = np.asarray(
+        y,
+        dtype=float
+    )
 
-    return (
-        float(np.mean(values[mask])),
-        int(np.sum(mask))
+    valid = (
+        np.isfinite(x)
+        & np.isfinite(y)
+    )
+
+    x = x[valid]
+    y = y[valid]
+
+    if len(x) < 3:
+        return np.nan
+
+    if np.std(x) == 0:
+        return np.nan
+
+    if np.std(y) == 0:
+        return np.nan
+
+    return float(
+        np.corrcoef(
+            x,
+            y
+        )[0, 1]
     )
 
 
 # ---------------------------------------------------------
-# PROFILE EXTRACTION
+# THERMAL ASSOCIATION
 # ---------------------------------------------------------
 
-def get_profile(
-    glorys,
-    time,
-    latitude,
-    longitude
+temperature_error_array = np.asarray(
+    temperature_errors
+)
+
+temperature_gradient_array = np.asarray(
+    temperature_gradients
+)
+
+density_gradient_array = np.asarray(
+    density_gradients
+)
+
+
+thermal_correlation = safe_correlation(
+    temperature_error_array,
+    temperature_gradient_array
+)
+
+
+density_correlation = safe_correlation(
+    temperature_error_array,
+    density_gradient_array
+)
+
+
+print("\n" + "=" * 60)
+print("THERMAL STRUCTURE ASSOCIATION")
+print("=" * 60)
+
+
+print(
+    "\nTemperature-error vs 50–200 dbar "
+    "temperature-gradient correlation:"
+)
+
+if np.isfinite(
+    thermal_correlation
 ):
 
-    return glorys.sel(
-        time=time,
-        latitude=latitude,
-        longitude=longitude,
-        method="nearest"
+    print(
+        f"{thermal_correlation:.3f}"
+    )
+
+else:
+
+    print(
+        "Not available — insufficient variation "
+        "or valid profiles."
     )
 
 
-# ---------------------------------------------------------
-# MAIN ANALYSIS
-# ---------------------------------------------------------
+print("\n" + "=" * 60)
+print("DENSITY STRATIFICATION ASSOCIATION")
+print("=" * 60)
 
-def analyze_profiles(
-    collocated,
-    glorys,
-    max_profiles=100
+
+print(
+    "\nTemperature-error vs 50–200 dbar "
+    "density-gradient correlation:"
+)
+
+if np.isfinite(
+    density_correlation
 ):
 
-    print("\n" + "=" * 60)
-    print("TEOS-10 CONTEXTUAL DIAGNOSTICS")
-    print("=" * 60)
+    print(
+        f"{density_correlation:.3f}"
+    )
+
+else:
 
     print(
-        "\nPurpose:"
-    )
-
-    print(
-        "Test whether the observed temperature "
-        "discrepancy is associated with modeled "
-        "vertical thermal or density structure."
-    )
-
-    print(
-        "\nScientific caution:"
-    )
-
-    print(
-        "A statistical association does not establish "
-        "that stratification or mixing caused the error."
-    )
-
-    n = min(
-        max_profiles,
-        len(collocated.time)
-    )
-
-    records = []
-
-    print(
-        f"\nExamining up to {n} matched profiles..."
-    )
-
-    for i in range(n):
-
-        time = collocated.time.values[i]
-        latitude = float(
-            collocated.latitude.values[i]
-        )
-        longitude = float(
-            collocated.longitude.values[i]
-        )
-
-        try:
-
-            profile = get_profile(
-                glorys,
-                time,
-                latitude,
-                longitude
-            )
-
-            result = calculate_teos10_profile(
-                profile.depth.values,
-                latitude,
-                longitude,
-                profile.thetao.values,
-                profile.so.values
-            )
-
-            if result is None:
-                continue
-
-            depth = result["depth"]
-
-            temp_gradient = (
-                result["temperature_gradient"]
-            )
-
-            density_gradient = (
-                result["density_gradient"]
-            )
-
-            temp_grad_target, temp_n = (
-                layer_mean(
-                    depth,
-                    temp_gradient,
-                    50,
-                    200
-                )
-            )
-
-            density_grad_target, density_n = (
-                layer_mean(
-                    depth,
-                    density_gradient,
-                    50,
-                    200
-                )
-            )
-
-            records.append({
-                "temperature_error":
-                    float(
-                        collocated.temperature_error.values[i]
-                    ),
-
-                "temperature_gradient":
-                    temp_grad_target,
-
-                "density_gradient":
-                    density_grad_target,
-
-                "temp_n":
-                    temp_n,
-
-                "density_n":
-                    density_n
-            })
-
-        except Exception as exc:
-
-            print(
-                f"Profile {i} skipped: {exc}"
-            )
-
-    print(
-        "\nProfiles successfully processed:",
-        len(records)
-    )
-
-    if len(records) < 3:
-
-        print(
-            "\nNot enough valid profiles "
-            "for correlation analysis."
-        )
-
-        return
-
-    errors = np.array([
-        r["temperature_error"]
-        for r in records
-    ])
-
-    temp_gradients = np.array([
-        r["temperature_gradient"]
-        for r in records
-    ])
-
-    density_gradients = np.array([
-        r["density_gradient"]
-        for r in records
-    ])
-
-    # -----------------------------------------------------
-    # TEMPERATURE GRADIENT
-    # -----------------------------------------------------
-
-    valid_temp = (
-        np.isfinite(errors)
-        & np.isfinite(temp_gradients)
-    )
-
-    print(
-        "\n" + "=" * 60
-    )
-
-    print(
-        "THERMAL STRUCTURE ASSOCIATION"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    if np.sum(valid_temp) >= 3:
-
-        x = errors[valid_temp]
-        y = temp_gradients[valid_temp]
-
-        if (
-            np.std(x) > 0
-            and np.std(y) > 0
-        ):
-
-            correlation = np.corrcoef(
-                x,
-                y
-            )[0, 1]
-
-            print(
-                "\nTemperature-error vs "
-                "50–200 dbar temperature-gradient correlation:"
-            )
-
-            print(
-                f"{correlation:.3f}"
-            )
-
-        else:
-
-            print(
-                "\nTemperature-gradient correlation:"
-            )
-
-            print(
-                "Not computable because one variable "
-                "has insufficient variability."
-            )
-
-    # -----------------------------------------------------
-    # DENSITY STRATIFICATION
-    # -----------------------------------------------------
-
-    valid_density = (
-        np.isfinite(errors)
-        & np.isfinite(density_gradients)
-    )
-
-    print(
-        "\n" + "=" * 60
-    )
-
-    print(
-        "DENSITY STRATIFICATION ASSOCIATION"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    if np.sum(valid_density) >= 3:
-
-        x = errors[valid_density]
-        y = density_gradients[valid_density]
-
-        if (
-            np.std(x) > 0
-            and np.std(y) > 0
-        ):
-
-            correlation = np.corrcoef(
-                x,
-                y
-            )[0, 1]
-
-            print(
-                "\nTemperature-error vs "
-                "50–200 dbar density-gradient correlation:"
-            )
-
-            print(
-                f"{correlation:.3f}"
-            )
-
-        else:
-
-            print(
-                "\nDensity-gradient correlation:"
-            )
-
-            print(
-                "Not computable because one variable "
-                "has insufficient variability."
-            )
-
-    # -----------------------------------------------------
-    # INTERPRETATION
-    # -----------------------------------------------------
-
-    print(
-        "\n" + "=" * 60
-    )
-
-    print(
-        "SCIENTIFIC INTERPRETATION"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        "\nObserved:"
-    )
-
-    print(
-        "A robust positive temperature discrepancy "
-        "has already been detected in the 50–200 dbar layer."
-    )
-
-    print(
-        "\nWhat this analysis can test:"
-    )
-
-    print(
-        "Whether that discrepancy is statistically "
-        "associated with vertical thermal or density structure."
-    )
-
-    print(
-        "\nWhat it cannot establish:"
-    )
-
-    print(
-        "A correlation cannot prove that vertical mixing, "
-        "stratification, or another physical process caused "
-        "the model error."
-    )
-
-    print(
-        "\nPossible next investigations:"
-    )
-
-    print(
-        "  → Compare Argo and GLORYS full vertical profiles."
-    )
-
-    print(
-        "  → Calculate mixed-layer depth."
-    )
-
-    print(
-        "  → Examine buoyancy frequency (N²)."
-    )
-
-    print(
-        "  → Examine vertical mixing diagnostics."
-    )
-
-    print(
-        "  → Compare surface forcing."
-    )
-
-    print(
-        "  → Repeat using additional observation periods."
-    )
-
-    print(
-        "\nTEOS-10 contextual diagnostics complete."
+        "Not available — insufficient variation "
+        "or valid profiles."
     )
 
 
 # ---------------------------------------------------------
-# MAIN
+# SCIENTIFIC INTERPRETATION
 # ---------------------------------------------------------
 
-def main():
+print("\n" + "=" * 60)
+print("SCIENTIFIC INTERPRETATION")
+print("=" * 60)
 
-    collocated, glorys = load_data()
 
-    analyze_profiles(
-        collocated,
-        glorys,
-        max_profiles=100
+print(
+    """
+Observed:
+
+A positive temperature discrepancy has already been
+detected in the 50–200 dbar layer.
+
+What this analysis can test:
+
+Whether that discrepancy is statistically associated
+with modeled vertical thermal or density structure.
+
+What it cannot establish:
+
+A correlation cannot prove that vertical mixing,
+stratification, or another physical process caused
+the model error.
+"""
+)
+
+
+# ---------------------------------------------------------
+# INTERPRETATION OF CORRELATIONS
+# ---------------------------------------------------------
+
+print(
+    "\nInterpretation of current associations:"
+)
+
+
+if np.isfinite(
+    thermal_correlation
+):
+
+    print(
+        f"  • Thermal-structure correlation = "
+        f"{thermal_correlation:.3f}"
+    )
+
+else:
+
+    print(
+        "  • Thermal-structure correlation could "
+        "not be reliably estimated."
     )
 
 
-if __name__ == "__main__":
-    main()
+if np.isfinite(
+    density_correlation
+):
+
+    print(
+        f"  • Density-gradient correlation = "
+        f"{density_correlation:.3f}"
+    )
+
+else:
+
+    print(
+        "  • Density-gradient correlation could "
+        "not be reliably estimated."
+    )
+
+
+print(
+    """
+Even if an association is present, several explanations
+remain possible.
+
+For example:
+
+  • Differences in vertical mixing
+  • Differences in model stratification
+  • Surface forcing errors
+  • Sampling or collocation effects
+  • Data-assimilation effects
+  • Other regional processes
+
+Therefore, these results should be reported as
+evidence of association, not as proof of causation.
+"""
+)
+
+
+# ---------------------------------------------------------
+# POSSIBLE NEXT INVESTIGATIONS
+# ---------------------------------------------------------
+
+print(
+    "\nPossible next investigations:"
+)
+
+print(
+    "  → Compare full Argo and GLORYS profiles."
+)
+
+print(
+    "  → Calculate mixed-layer depth."
+)
+
+print(
+    "  → Examine buoyancy frequency (N²)."
+)
+
+print(
+    "  → Examine vertical mixing diagnostics."
+)
+
+print(
+    "  → Compare surface forcing."
+)
+
+print(
+    "  → Test additional dates and Argo platforms."
+)
+
+print(
+    "  → Repeat the analysis over additional months "
+    "or years."
+)
+
+
+print(
+    "\nTEOS-10 contextual diagnostics complete."
+)

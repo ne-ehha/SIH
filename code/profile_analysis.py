@@ -1,59 +1,205 @@
 import xarray as xr
 import numpy as np
-import gsw
 import pandas as pd
+from pathlib import Path
+
+import gsw
 
 
-COLLOCATED_FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATHS
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+COLLOCATION_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 GLORYS_FILE = (
-    "/Users/nehasreeraj/Downloads/"
-    "cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
+    PROJECT_ROOT
+    / "GLORY"
+    / "cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
 )
 
 
-def load_data():
-    print("Loading collocated observations...")
-    collocated = xr.open_dataset(COLLOCATED_FILE)
+# ---------------------------------------------------------
+# SETTINGS
+# ---------------------------------------------------------
 
-    print("Loading GLORYS...")
-    glorys = xr.open_dataset(GLORYS_FILE)
+TARGET_MIN_DEPTH = 50
+TARGET_MAX_DEPTH = 200
 
-    return collocated, glorys
+MAX_PROFILES = 100
 
 
-def calculate_n2(depth, temperature, salinity, latitude, longitude):
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+print("Loading collocated observations...")
+
+collocated = xr.open_dataset(
+    COLLOCATION_FILE
+)
+
+print("Loading GLORYS...")
+
+glorys = xr.open_dataset(
+    GLORYS_FILE
+)
+
+
+# ---------------------------------------------------------
+# CONVERT TO DATAFRAME
+# ---------------------------------------------------------
+
+df = collocated.to_dataframe().reset_index()
+
+df = df.dropna(
+    subset=[
+        "temperature_error",
+        "pressure",
+        "latitude",
+        "longitude",
+        "time",
+    ]
+)
+
+
+# ---------------------------------------------------------
+# IDENTIFY INDEPENDENT PROFILES
+# ---------------------------------------------------------
+
+if (
+    "platform_number" in df.columns
+    and "cycle_number" in df.columns
+):
+
+    profile_groups = df.groupby(
+        [
+            "platform_number",
+            "cycle_number",
+        ],
+        dropna=False
+    )
+
+elif "platform_number" in df.columns:
+
+    profile_groups = df.groupby(
+        ["platform_number"],
+        dropna=False
+    )
+
+else:
+
+    # Fallback if profile identifiers are unavailable.
+    df["profile_id"] = (
+        df["latitude"].round(2).astype(str)
+        + "_"
+        + df["longitude"].round(2).astype(str)
+        + "_"
+        + df["time"].astype(str)
+    )
+
+    profile_groups = df.groupby(
+        ["profile_id"],
+        dropna=False
+    )
+
+
+print(
+    "\nIndependent platform/cycle combinations:",
+    len(profile_groups)
+)
+
+
+# ---------------------------------------------------------
+# STORAGE
+# ---------------------------------------------------------
+
+profile_results = []
+
+
+# ---------------------------------------------------------
+# N² CALCULATION
+# ---------------------------------------------------------
+
+def calculate_n2(
+    salinity,
+    temperature,
+    pressure,
+    latitude,
+    longitude
+):
     """
     Calculate TEOS-10 buoyancy frequency squared (N²).
 
-    This uses the GLORYS temperature/salinity profile.
+    This is a contextual diagnostic.
+
+    It does not establish that stratification caused
+    the model–observation temperature discrepancy.
     """
 
-    depth = np.asarray(depth, dtype=float)
-    temperature = np.asarray(temperature, dtype=float)
-    salinity = np.asarray(salinity, dtype=float)
+    salinity = np.asarray(
+        salinity,
+        dtype=float
+    )
+
+    temperature = np.asarray(
+        temperature,
+        dtype=float
+    )
+
+    pressure = np.asarray(
+        pressure,
+        dtype=float
+    )
 
     valid = (
-        np.isfinite(depth)
+        np.isfinite(salinity)
         & np.isfinite(temperature)
-        & np.isfinite(salinity)
+        & np.isfinite(pressure)
     )
 
-    depth = depth[valid]
-    temperature = temperature[valid]
     salinity = salinity[valid]
+    temperature = temperature[valid]
+    pressure = pressure[valid]
 
-    if len(depth) < 4:
+    if len(pressure) < 4:
         return None
 
-    pressure = gsw.p_from_z(
-        -depth,
-        latitude
+    # Sort by increasing pressure.
+    order = np.argsort(
+        pressure
     )
 
+    salinity = salinity[order]
+    temperature = temperature[order]
+    pressure = pressure[order]
+
+    # Remove duplicate pressure values.
+    unique_pressure, unique_indices = (
+        np.unique(
+            pressure,
+            return_index=True
+        )
+    )
+
+    pressure = unique_pressure
+    salinity = salinity[
+        unique_indices
+    ]
+    temperature = temperature[
+        unique_indices
+    ]
+
+    if len(pressure) < 4:
+        return None
+
+    # Convert practical salinity to absolute salinity.
     SA = gsw.SA_from_SP(
         salinity,
         pressure,
@@ -61,441 +207,539 @@ def calculate_n2(depth, temperature, salinity, latitude, longitude):
         latitude
     )
 
-    CT = gsw.CT_from_pt(
+    # Convert in-situ temperature to Conservative
+    # Temperature.
+    CT = gsw.CT_from_t(
         SA,
-        temperature
+        temperature,
+        pressure
     )
 
-    # TEOS-10 buoyancy frequency squared
-    N2, mid_pressure = gsw.Nsquared(
+    # Calculate N² between adjacent pressure levels.
+    N2, p_mid = gsw.Nsquared(
         SA,
         CT,
         pressure,
-        latitude
+        latitude=latitude
     )
 
-    mid_depth = -gsw.z_from_p(
-        mid_pressure,
-        latitude
+    valid_n2 = np.isfinite(
+        N2
     )
 
-    return mid_depth, N2
+    if valid_n2.sum() == 0:
+        return None
 
-
-def layer_mean(depth, values, low, high):
-
-    mask = (
-        (depth >= low)
-        & (depth < high)
-        & np.isfinite(values)
+    # Use midpoint pressure to select the
+    # target 50–200 dbar layer.
+    target_mask = (
+        (p_mid >= TARGET_MIN_DEPTH)
+        & (p_mid <= TARGET_MAX_DEPTH)
+        & valid_n2
     )
 
-    if np.sum(mask) == 0:
-        return np.nan
+    if target_mask.sum() == 0:
+        return None
 
-    return float(np.mean(values[mask]))
-
-
-def main():
-
-    collocated, glorys = load_data()
-
-    print("\n" + "=" * 60)
-    print("PROFILE-LEVEL N² ANALYSIS")
-    print("=" * 60)
-
-    print(
-        "\nPurpose:"
+    mean_n2 = float(
+        np.nanmean(
+            N2[target_mask]
+        )
     )
 
-    print(
-        "Assess whether the model temperature discrepancy "
-        "is consistently associated with modeled "
-        "stratification across independent Argo profiles."
+    return mean_n2
+
+
+# ---------------------------------------------------------
+# PROFILE LOOP
+# ---------------------------------------------------------
+
+for profile_id, profile in profile_groups:
+
+    if len(profile_results) >= MAX_PROFILES:
+        break
+
+    profile = profile.sort_values(
+        "pressure"
     )
 
-    print(
-        "\nScientific caution:"
+    # Need enough observations for a profile-level
+    # temperature bias.
+    if len(profile) < 3:
+        continue
+
+    latitude = float(
+        profile["latitude"].iloc[0]
     )
 
-    print(
-        "An association does not establish that "
-        "stratification caused the model error."
+    longitude = float(
+        profile["longitude"].iloc[0]
     )
+
+    time = profile["time"].iloc[0]
 
     # -----------------------------------------------------
-    # GROUP BY ARGO PLATFORM + CYCLE
+    # TARGET-LAYER OBSERVATIONS
     # -----------------------------------------------------
 
-    platforms = (
-        collocated.platform_number.values
+    target_profile = profile[
+        (profile["pressure"] >= TARGET_MIN_DEPTH)
+        & (profile["pressure"] <= TARGET_MAX_DEPTH)
+    ]
+
+    if len(target_profile) < 2:
+        continue
+
+    temp_bias = float(
+        target_profile[
+            "temperature_error"
+        ].mean()
     )
 
-    cycles = (
-        collocated.cycle_number.values
-    )
-
-    unique_profiles = []
-
-    for platform, cycle in zip(
-        platforms,
-        cycles
+    if not np.isfinite(
+        temp_bias
     ):
-
-        unique_profiles.append(
-            (
-                str(platform),
-                str(cycle)
-            )
-        )
-
-    unique_profiles = list(
-        dict.fromkeys(unique_profiles)
-    )
-
-    print(
-        "\nIndependent platform/cycle combinations:",
-        len(unique_profiles)
-    )
-
-    records = []
+        continue
 
     # -----------------------------------------------------
-    # PROFILE LOOP
+    # GET MODEL PROFILE
     # -----------------------------------------------------
 
-    for platform, cycle in unique_profiles:
+    try:
 
-        profile_mask = (
-            (platforms.astype(str) == platform)
-            & (cycles.astype(str) == cycle)
+        model_profile = glorys.interp(
+            time=np.datetime64(time),
+            latitude=latitude,
+            longitude=longitude,
+            method="linear"
         )
 
-        indices = np.where(
-            profile_mask
-        )[0]
-
-        if len(indices) == 0:
-            continue
-
-        # Representative location/time
-        i = indices[0]
-
-        latitude = float(
-            collocated.latitude.values[i]
-        )
-
-        longitude = float(
-            collocated.longitude.values[i]
-        )
-
-        time = collocated.time.values[i]
-
-        # Mean model-observation temperature error
-        errors = (
-            collocated.temperature_error.values[
-                indices
-            ]
-        )
-
-        errors = errors[
-            np.isfinite(errors)
-        ]
-
-        if len(errors) == 0:
-            continue
-
-        profile_error = float(
-            np.mean(errors)
-        )
-
-        # -------------------------------------------------
-        # Extract nearest GLORYS profile
-        # -------------------------------------------------
-
-        try:
-
-            model_profile = glorys.sel(
-                time=time,
-                latitude=latitude,
-                longitude=longitude,
-                method="nearest"
-            )
-
-            result = calculate_n2(
-                model_profile.depth.values,
-                model_profile.thetao.values,
-                model_profile.so.values,
-                latitude,
-                longitude
-            )
-
-            if result is None:
-                continue
-
-            depth, N2 = result
-
-            target_n2 = layer_mean(
-                depth,
-                N2,
-                50,
-                200
-            )
-
-            records.append({
-                "platform": platform,
-                "cycle": cycle,
-                "latitude": latitude,
-                "longitude": longitude,
-                "time": time,
-                "temperature_bias": profile_error,
-                "N2_50_200": target_n2
-            })
-
-        except Exception as exc:
-
-            print(
-                f"Profile {platform}/{cycle} skipped: {exc}"
-            )
+    except Exception:
+        continue
 
     # -----------------------------------------------------
-    # RESULTS
+    # MODEL VARIABLES
     # -----------------------------------------------------
 
-    result = pd.DataFrame(records)
+    if (
+        "thetao" not in model_profile
+        or "so" not in model_profile
+    ):
+        continue
 
-    print(
-        "\nProfiles successfully analyzed:",
-        len(result)
+    model_depth = np.asarray(
+        glorys["depth"].values,
+        dtype=float
     )
 
-    if len(result) < 3:
-
-        print(
-            "\nNot enough independent profiles "
-            "for statistical analysis."
-        )
-
-        return
-
-    print(
-        "\n" + "=" * 60
+    model_temperature = np.asarray(
+        model_profile["thetao"].values,
+        dtype=float
     )
 
-    print(
-        "PROFILE-LEVEL RESULTS"
+    model_salinity = np.asarray(
+        model_profile["so"].values,
+        dtype=float
     )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        "\n{:<14} {:>8} {:>14} {:>14}".format(
-            "Platform/Cycle",
-            "N",
-            "Temp Bias",
-            "Mean N²"
-        )
-    )
-
-    for _, row in result.head(20).iterrows():
-
-        print(
-            "{:<14} {:>8} {:>14.3f} {:>14.4e}".format(
-                f"{row['platform']}/{row['cycle']}",
-                1,
-                row["temperature_bias"],
-                row["N2_50_200"]
-                if np.isfinite(row["N2_50_200"])
-                else np.nan
-            )
-        )
 
     # -----------------------------------------------------
-    # CORRELATION
+    # VALID MODEL DATA
     # -----------------------------------------------------
 
     valid = (
-        np.isfinite(
-            result.temperature_bias
-        )
-        & np.isfinite(
-            result.N2_50_200
-        )
+        np.isfinite(model_depth)
+        & np.isfinite(model_temperature)
+        & np.isfinite(model_salinity)
     )
 
-    print(
-        "\nIndependent profiles with valid N²:",
-        int(np.sum(valid))
-    )
-
-    if np.sum(valid) >= 5:
-
-        x = result.loc[
-            valid,
-            "temperature_bias"
-        ].values
-
-        y = result.loc[
-            valid,
-            "N2_50_200"
-        ].values
-
-        if (
-            np.std(x) > 0
-            and np.std(y) > 0
-        ):
-
-            correlation = np.corrcoef(
-                x,
-                y
-            )[0, 1]
-
-            print(
-                "\nTemperature-bias vs "
-                "50–200 dbar N² correlation:"
-            )
-
-            print(
-                f"{correlation:.3f}"
-            )
-
-        else:
-
-            print(
-                "\nN² correlation cannot be calculated "
-                "because there is insufficient variability."
-            )
-
-    # -----------------------------------------------------
-    # PROFILE CONSISTENCY
-    # -----------------------------------------------------
-
-    print(
-        "\n" + "=" * 60
-    )
-
-    print(
-        "PROFILE CONSISTENCY"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    positive = result[
-        result.temperature_bias > 0.3
+    model_depth = model_depth[
+        valid
     ]
 
-    negative_or_small = result[
-        result.temperature_bias <= 0.3
+    model_temperature = (
+        model_temperature[valid]
+    )
+
+    model_salinity = (
+        model_salinity[valid]
+    )
+
+    # -----------------------------------------------------
+    # TARGET MODEL LAYER
+    # -----------------------------------------------------
+
+    target_mask = (
+        (model_depth >= TARGET_MIN_DEPTH)
+        & (model_depth <= TARGET_MAX_DEPTH)
+    )
+
+    if target_mask.sum() < 4:
+        continue
+
+    target_depth = (
+        model_depth[target_mask]
+    )
+
+    target_temperature = (
+        model_temperature[target_mask]
+    )
+
+    target_salinity = (
+        model_salinity[target_mask]
+    )
+
+    # -----------------------------------------------------
+    # CALCULATE N²
+    # -----------------------------------------------------
+
+    mean_n2 = calculate_n2(
+        target_salinity,
+        target_temperature,
+        gsw.p_from_z(
+            -target_depth,
+            latitude
+        ),
+        latitude,
+        longitude
+    )
+
+    if mean_n2 is None:
+        continue
+
+    # -----------------------------------------------------
+    # STORE PROFILE RESULT
+    # -----------------------------------------------------
+
+    profile_results.append({
+        "profile": str(profile_id),
+        "n": len(target_profile),
+        "temperature_bias": temp_bias,
+        "mean_n2": mean_n2,
+    })
+
+
+# ---------------------------------------------------------
+# RESULTS DATAFRAME
+# ---------------------------------------------------------
+
+results = pd.DataFrame(
+    profile_results
+)
+
+
+print("\n" + "=" * 60)
+print("PROFILE-LEVEL N² ANALYSIS")
+print("=" * 60)
+
+
+print(
+    "\nPurpose:"
+)
+
+print(
+    "Assess whether the model temperature discrepancy "
+    "is consistently associated with modeled "
+    "stratification across independent Argo profiles."
+)
+
+
+print(
+    "\nScientific caution:"
+)
+
+print(
+    "An association does not establish that "
+    "stratification caused the model error."
+)
+
+
+print(
+    "\nProfiles successfully analyzed:",
+    len(results)
+)
+
+
+# ---------------------------------------------------------
+# PROFILE RESULTS
+# ---------------------------------------------------------
+
+if len(results) > 0:
+
+    print("\n" + "=" * 60)
+    print("PROFILE-LEVEL RESULTS")
+    print("=" * 60)
+
+    print(
+        "\nPlatform/Cycle"
+        "                     N"
+        "      Temp Bias"
+        "        Mean N²"
+    )
+
+    for _, row in results.iterrows():
+
+        print(
+            f"{str(row['profile']):<32}"
+            f"{int(row['n']):>6}"
+            f"{row['temperature_bias']:>16.3f}"
+            f"{row['mean_n2']:>18.4e}"
+        )
+
+
+# ---------------------------------------------------------
+# CORRELATION
+# ---------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("PROFILE ASSOCIATION")
+print("=" * 60)
+
+
+if len(results) >= 3:
+
+    bias_values = (
+        results[
+            "temperature_bias"
+        ].to_numpy()
+    )
+
+    n2_values = (
+        results[
+            "mean_n2"
+        ].to_numpy()
+    )
+
+    valid = (
+        np.isfinite(
+            bias_values
+        )
+        & np.isfinite(
+            n2_values
+        )
+    )
+
+    bias_values = (
+        bias_values[valid]
+    )
+
+    n2_values = (
+        n2_values[valid]
+    )
+
+    if (
+        len(bias_values) >= 3
+        and np.std(bias_values) > 0
+        and np.std(n2_values) > 0
+    ):
+
+        correlation = float(
+            np.corrcoef(
+                bias_values,
+                n2_values
+            )[0, 1]
+        )
+
+    else:
+
+        correlation = np.nan
+
+else:
+
+    correlation = np.nan
+
+
+print(
+    "\nTemperature-bias vs 50–200 dbar N² correlation:"
+)
+
+
+if np.isfinite(
+    correlation
+):
+
+    print(
+        f"{correlation:.3f}"
+    )
+
+else:
+
+    print(
+        "Not available — insufficient variation "
+        "or valid profiles."
+    )
+
+
+# ---------------------------------------------------------
+# PROFILE CONSISTENCY
+# ---------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("PROFILE CONSISTENCY")
+print("=" * 60)
+
+
+if len(results) > 0:
+
+    high_bias = results[
+        results["temperature_bias"] > 0.3
+    ]
+
+    lower_bias = results[
+        results["temperature_bias"] <= 0.3
     ]
 
     print(
         "\nProfiles with temperature bias > +0.3°C:",
-        len(positive)
+        len(high_bias)
     )
 
     print(
         "Profiles with bias <= +0.3°C:",
-        len(negative_or_small)
+        len(lower_bias)
     )
 
-    if len(positive) > 0:
+    if len(high_bias) > 0:
 
         print(
-            "\nMean N² for profiles with "
-            "bias > +0.3°C:"
+            "\nMean N² for profiles with bias > +0.3°C:"
         )
 
         print(
-            positive.N2_50_200.mean()
+            float(
+                high_bias["mean_n2"].mean()
+            )
         )
 
-    if len(negative_or_small) > 0:
+    else:
 
         print(
-            "\nMean N² for profiles with "
-            "bias <= +0.3°C:"
+            "\nMean N² for profiles with bias > +0.3°C:"
         )
 
         print(
-            negative_or_small.N2_50_200.mean()
+            "Not available."
         )
 
-    # -----------------------------------------------------
-    # SCIENTIFIC INTERPRETATION
-    # -----------------------------------------------------
+    if len(lower_bias) > 0:
 
-    print(
-        "\n" + "=" * 60
-    )
+        print(
+            "\nMean N² for profiles with bias <= +0.3°C:"
+        )
 
-    print(
-        "SCIENTIFIC INTERPRETATION"
-    )
+        print(
+            float(
+                lower_bias["mean_n2"].mean()
+            )
+        )
 
-    print(
-        "=" * 60
-    )
+    else:
 
-    print(
-        "\nObserved:"
-    )
+        print(
+            "\nMean N² for profiles with bias <= +0.3°C:"
+        )
 
-    print(
-        "The 50–200 dbar temperature discrepancy "
-        "is robust in the collocated dataset."
-    )
-
-    print(
-        "\nNew test:"
-    )
-
-    print(
-        "We have now examined the relationship "
-        "at the independent Argo-profile level."
-    )
-
-    print(
-        "\nImportant limitation:"
-    )
-
-    print(
-        "A relationship between temperature bias "
-        "and N² would be evidence of association, "
-        "not proof of a mixing or stratification cause."
-    )
-
-    print(
-        "\nPossible next investigations:"
-    )
-
-    print(
-        "  → Compare complete Argo and GLORYS profiles."
-    )
-
-    print(
-        "  → Compare mixed-layer depth."
-    )
-
-    print(
-        "  → Examine vertical diffusivity/mixing diagnostics."
-    )
-
-    print(
-        "  → Compare surface forcing."
-    )
-
-    print(
-        "  → Repeat across additional months or years."
-    )
-
-    print(
-        "\nProfile-level analysis complete."
-    )
+        print(
+            "Not available."
+        )
 
 
-if __name__ == "__main__":
-    main()
+# ---------------------------------------------------------
+# SCIENTIFIC INTERPRETATION
+# ---------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("SCIENTIFIC INTERPRETATION")
+print("=" * 60)
+
+
+print(
+    """
+Observed:
+
+The 50–200 dbar temperature discrepancy is robust
+in the collocated dataset.
+
+New test:
+
+We have examined the relationship at the independent
+Argo-profile level using TEOS-10 N².
+
+Important limitation:
+
+A relationship between temperature bias and N² would
+be evidence of association, not proof of a mixing or
+stratification cause.
+
+A weak or near-zero relationship would also NOT prove
+that stratification or mixing is irrelevant. It would
+only indicate that this particular diagnostic does not
+explain much of the observed profile-to-profile variation.
+"""
+)
+
+
+# ---------------------------------------------------------
+# POSSIBLE EXPLANATIONS
+# ---------------------------------------------------------
+
+print(
+    "\nPossible explanations remain:"
+)
+
+print(
+    "  • Vertical mixing or vertical-structure differences"
+)
+
+print(
+    "  • Surface or atmospheric forcing"
+)
+
+print(
+    "  • Sampling or collocation effects"
+)
+
+print(
+    "  • Data-assimilation or reanalysis effects"
+)
+
+print(
+    "  • Other regional oceanographic processes"
+)
+
+
+# ---------------------------------------------------------
+# POSSIBLE NEXT INVESTIGATIONS
+# ---------------------------------------------------------
+
+print(
+    "\nPossible next investigations:"
+)
+
+print(
+    "  → Compare complete Argo and GLORYS profiles."
+)
+
+print(
+    "  → Compare mixed-layer depth."
+)
+
+print(
+    "  → Examine vertical diffusivity/mixing diagnostics."
+)
+
+print(
+    "  → Compare surface forcing."
+)
+
+print(
+    "  → Repeat across additional months or years."
+)
+
+print(
+    "  → Test additional independent Argo platforms."
+)
+
+
+print(
+    "\nProfile-level analysis complete."
+)

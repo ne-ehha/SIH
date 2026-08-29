@@ -1,9 +1,20 @@
+from pathlib import Path
 import xarray as xr
 import numpy as np
 
 
-ARGO_FILE = "/Users/nehasreeraj/Desktop/oceanproject_SIH/ARGO/argo_dm_BOB_2024.nc copy"
+# ---------------------------------------------------------
+# PROJECT PATH
+# ---------------------------------------------------------
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+ARGO_FILE = PROJECT_ROOT / "ARGO" / "argo_dm_BOB_2024.nc copy"
+
+
+# ---------------------------------------------------------
+# LOAD ARGO
+# ---------------------------------------------------------
 
 def load_argo():
     """
@@ -17,6 +28,10 @@ def load_argo():
 
     return ds
 
+
+# ---------------------------------------------------------
+# ARGO QC
+# ---------------------------------------------------------
 
 def apply_qc(ds):
     """
@@ -43,6 +58,10 @@ def apply_qc(ds):
     return ds.where(valid, drop=True)
 
 
+# ---------------------------------------------------------
+# SUMMARY
+# ---------------------------------------------------------
+
 def print_argo_summary(ds):
 
     print("\n" + "=" * 60)
@@ -65,7 +84,12 @@ def print_argo_summary(ds):
     print(float(ds.longitude.min()), "to", float(ds.longitude.max()))
 
     print("\nPressure:")
-    print(float(ds.pressure.min()), "to", float(ds.pressure.max()), "dbar")
+    print(
+        float(ds.pressure.min()),
+        "to",
+        float(ds.pressure.max()),
+        "dbar"
+    )
 
     print("\nNumber of platforms:")
     print(len(np.unique(ds.platform_number.values)))
@@ -75,6 +99,10 @@ def print_argo_summary(ds):
     print("TEMP_QC = 1")
     print("PSAL_QC = 1")
 
+
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
 

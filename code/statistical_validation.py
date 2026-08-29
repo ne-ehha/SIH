@@ -1,11 +1,19 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 
-FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATH
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+INPUT_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 
@@ -13,455 +21,558 @@ FILE = (
 # LOAD DATA
 # ---------------------------------------------------------
 
-def load_data():
-    return xr.open_dataset(FILE)
+print("Loading collocated dataset...")
+
+ds = xr.open_dataset(INPUT_FILE)
+
+df = ds.to_dataframe().reset_index()
+
+df = df.dropna(
+    subset=[
+        "argo_temperature",
+        "model_temperature",
+        "temperature_error",
+        "argo_salinity",
+        "model_salinity",
+        "salinity_error",
+        "pressure",
+        "time",
+    ]
+)
 
 
 # ---------------------------------------------------------
-# BASIC METRICS
+# METRIC FUNCTIONS
 # ---------------------------------------------------------
 
-def calculate_metrics(model, observation):
+def bias(error):
+    return float(np.mean(error))
 
-    model = np.asarray(model, dtype=float)
-    observation = np.asarray(observation, dtype=float)
 
-    valid = (
-        np.isfinite(model)
-        & np.isfinite(observation)
+def mae(error):
+    return float(np.mean(np.abs(error)))
+
+
+def rmse(error):
+    return float(
+        np.sqrt(
+            np.mean(error ** 2)
+        )
     )
 
-    model = model[valid]
-    observation = observation[valid]
 
-    if len(model) == 0:
-        return {
-            "n": 0,
-            "bias": np.nan,
-            "mae": np.nan,
-            "rmse": np.nan,
-            "std": np.nan,
-            "median_ae": np.nan,
-            "correlation": np.nan,
-            "centered_rmse": np.nan,
-            "bias_ci_low": np.nan,
-            "bias_ci_high": np.nan,
-        }
+def correlation(observed, modeled):
+    if len(observed) < 2:
+        return np.nan
 
-    error = model - observation
+    if (
+        np.std(observed) == 0
+        or np.std(modeled) == 0
+    ):
+        return np.nan
+
+    return float(
+        np.corrcoef(
+            observed,
+            modeled
+        )[0, 1]
+    )
+
+
+def centered_rmse(error):
+    return float(
+        np.sqrt(
+            np.mean(
+                (
+                    error
+                    - np.mean(error)
+                ) ** 2
+            )
+        )
+    )
+
+
+def median_absolute_error(error):
+    return float(
+        np.median(
+            np.abs(error)
+        )
+    )
+
+
+def bias_confidence_interval(
+    error,
+    confidence=0.95
+):
 
     n = len(error)
 
-    bias = np.mean(error)
+    mean_error = np.mean(error)
 
-    mae = np.mean(np.abs(error))
-
-    rmse = np.sqrt(
-        np.mean(error ** 2)
-    )
-
-    std = (
-        np.std(error, ddof=1)
-        if n > 1
-        else 0.0
-    )
-
-    median_ae = np.median(
-        np.abs(error)
-    )
-
-    # Pearson correlation.
-    if n > 1 and np.std(model) > 0 and np.std(observation) > 0:
-        correlation = np.corrcoef(
-            model,
-            observation
-        )[0, 1]
-    else:
-        correlation = np.nan
-
-    # Centered RMSE removes the mean bias.
-    centered_error = error - bias
-
-    centered_rmse = np.sqrt(
-        np.mean(centered_error ** 2)
-    )
-
-    # Approximate 95% confidence interval for mean bias.
-    if n > 1:
-        standard_error = std / np.sqrt(n)
-
-        bias_ci_low = (
-            bias - 1.96 * standard_error
+    std_error = (
+        np.std(
+            error,
+            ddof=1
         )
+        / np.sqrt(n)
+    )
 
-        bias_ci_high = (
-            bias + 1.96 * standard_error
-        )
+    z = 1.96
 
-    else:
-        bias_ci_low = np.nan
-        bias_ci_high = np.nan
+    lower = (
+        mean_error
+        - z * std_error
+    )
 
-    return {
-        "n": n,
-        "bias": bias,
-        "mae": mae,
-        "rmse": rmse,
-        "std": std,
-        "median_ae": median_ae,
-        "correlation": correlation,
-        "centered_rmse": centered_rmse,
-        "bias_ci_low": bias_ci_low,
-        "bias_ci_high": bias_ci_high,
-    }
+    upper = (
+        mean_error
+        + z * std_error
+    )
+
+    return (
+        float(lower),
+        float(upper)
+    )
 
 
 # ---------------------------------------------------------
 # OVERALL STATISTICS
 # ---------------------------------------------------------
 
-def overall_statistics(ds):
+print("\n" + "=" * 60)
+print("OVERALL MODEL–OBSERVATION STATISTICS")
+print("=" * 60)
 
-    print("\n" + "=" * 60)
-    print("OVERALL MODEL–OBSERVATION STATISTICS")
-    print("=" * 60)
 
-    temp = calculate_metrics(
-        ds.model_temperature.values,
-        ds.argo_temperature.values
+temp_error = (
+    df["temperature_error"]
+    .to_numpy()
+)
+
+sal_error = (
+    df["salinity_error"]
+    .to_numpy()
+)
+
+
+print("\nTEMPERATURE")
+print("-" * 40)
+
+print("N:", len(temp_error))
+
+print(
+    "Bias:",
+    bias(temp_error)
+)
+
+print(
+    "MAE:",
+    mae(temp_error)
+)
+
+print(
+    "RMSE:",
+    rmse(temp_error)
+)
+
+print(
+    "Std error:",
+    float(
+        np.std(
+            temp_error,
+            ddof=1
+        )
     )
+)
 
-    sal = calculate_metrics(
-        ds.model_salinity.values,
-        ds.argo_salinity.values
+print(
+    "Median absolute error:",
+    median_absolute_error(
+        temp_error
     )
+)
 
-    print("\nTEMPERATURE")
-    print("-" * 40)
-
-    print("N:", temp["n"])
-    print("Bias:", temp["bias"])
-    print("MAE:", temp["mae"])
-    print("RMSE:", temp["rmse"])
-    print("Std error:", temp["std"])
-    print("Median absolute error:", temp["median_ae"])
-    print("Correlation:", temp["correlation"])
-    print("Centered RMSE:", temp["centered_rmse"])
-    print(
-        "95% bias CI:",
-        temp["bias_ci_low"],
-        "to",
-        temp["bias_ci_high"]
+print(
+    "Correlation:",
+    correlation(
+        df["argo_temperature"].to_numpy(),
+        df["model_temperature"].to_numpy()
     )
+)
 
-    print("\nSALINITY")
-    print("-" * 40)
-
-    print("N:", sal["n"])
-    print("Bias:", sal["bias"])
-    print("MAE:", sal["mae"])
-    print("RMSE:", sal["rmse"])
-    print("Std error:", sal["std"])
-    print("Median absolute error:", sal["median_ae"])
-    print("Correlation:", sal["correlation"])
-    print("Centered RMSE:", sal["centered_rmse"])
-    print(
-        "95% bias CI:",
-        sal["bias_ci_low"],
-        "to",
-        sal["bias_ci_high"]
+print(
+    "Centered RMSE:",
+    centered_rmse(
+        temp_error
     )
+)
+
+temp_ci = bias_confidence_interval(
+    temp_error
+)
+
+print(
+    "95% bias CI:",
+    temp_ci[0],
+    "to",
+    temp_ci[1]
+)
+
+
+print("\nSALINITY")
+print("-" * 40)
+
+print("N:", len(sal_error))
+
+print(
+    "Bias:",
+    bias(sal_error)
+)
+
+print(
+    "MAE:",
+    mae(sal_error)
+)
+
+print(
+    "RMSE:",
+    rmse(sal_error)
+)
+
+print(
+    "Std error:",
+    float(
+        np.std(
+            sal_error,
+            ddof=1
+        )
+    )
+)
+
+print(
+    "Median absolute error:",
+    median_absolute_error(
+        sal_error
+    )
+)
+
+print(
+    "Correlation:",
+    correlation(
+        df["argo_salinity"].to_numpy(),
+        df["model_salinity"].to_numpy()
+    )
+)
+
+print(
+    "Centered RMSE:",
+    centered_rmse(
+        sal_error
+    )
+)
+
+sal_ci = bias_confidence_interval(
+    sal_error
+)
+
+print(
+    "95% bias CI:",
+    sal_ci[0],
+    "to",
+    sal_ci[1]
+)
 
 
 # ---------------------------------------------------------
-# DEPTH STATISTICS
+# DEPTH-STRATIFIED STATISTICS
 # ---------------------------------------------------------
 
-def depth_statistics(ds):
+print("\n" + "=" * 60)
+print("DEPTH-STRATIFIED STATISTICS")
+print("=" * 60)
 
-    print("\n" + "=" * 60)
-    print("DEPTH-STRATIFIED STATISTICS")
-    print("=" * 60)
 
-    df = ds[
-        [
-            "pressure",
-            "model_temperature",
-            "argo_temperature",
-            "model_salinity",
-            "argo_salinity",
-        ]
-    ].to_dataframe().reset_index()
+depth_bins = [
+    0,
+    10,
+    25,
+    50,
+    100,
+    200,
+    300,
+    400,
+    500,
+]
 
-    bins = [
-        0,
-        10,
-        25,
-        50,
-        100,
-        200,
-        300,
-        400,
-        500,
+
+depth_labels = [
+    "0-10",
+    "10-25",
+    "25-50",
+    "50-100",
+    "100-200",
+    "200-300",
+    "300-400",
+    "400-500",
+]
+
+
+df["depth_bin"] = pd.cut(
+    df["pressure"],
+    bins=depth_bins,
+    labels=depth_labels,
+    include_lowest=True
+)
+
+
+print(
+    "\nDepth             N"
+    "     T Bias     T RMSE"
+    "        T r     S Bias     S RMSE"
+)
+
+
+for label in depth_labels:
+
+    subset = df[
+        df["depth_bin"] == label
     ]
 
-    labels = [
-        "0-10",
-        "10-25",
-        "25-50",
-        "50-100",
-        "100-200",
-        "200-300",
-        "300-400",
-        "400-500",
-    ]
+    if len(subset) == 0:
+        continue
 
-    df["depth_bin"] = pd.cut(
-        df["pressure"],
-        bins=bins,
-        labels=labels,
-        include_lowest=True
+    t_error = (
+        subset["temperature_error"]
+        .to_numpy()
+    )
+
+    s_error = (
+        subset["salinity_error"]
+        .to_numpy()
+    )
+
+    t_r = correlation(
+        subset["argo_temperature"].to_numpy(),
+        subset["model_temperature"].to_numpy()
     )
 
     print(
-        "\n{:<12} {:>6} {:>10} {:>10} {:>10} {:>10} {:>10}".format(
-            "Depth",
-            "N",
-            "T Bias",
-            "T RMSE",
-            "T r",
-            "S Bias",
-            "S RMSE"
-        )
+        f"{str(label):<12}"
+        f"{len(subset):>6}"
+        f"{bias(t_error):>12.3f}"
+        f"{rmse(t_error):>11.3f}"
+        f"{t_r:>11.3f}"
+        f"{bias(s_error):>12.3f}"
+        f"{rmse(s_error):>11.3f}"
     )
-
-    for depth, group in df.groupby(
-        "depth_bin",
-        observed=True
-    ):
-
-        temp = calculate_metrics(
-            group.model_temperature,
-            group.argo_temperature
-        )
-
-        sal = calculate_metrics(
-            group.model_salinity,
-            group.argo_salinity
-        )
-
-        print(
-            "{:<12} {:>6} {:>10.3f} {:>10.3f} {:>10.3f} {:>10.3f} {:>10.3f}".format(
-                str(depth),
-                temp["n"],
-                temp["bias"],
-                temp["rmse"],
-                temp["correlation"],
-                sal["bias"],
-                sal["rmse"],
-            )
-        )
 
 
 # ---------------------------------------------------------
 # TEMPORAL STATISTICS
 # ---------------------------------------------------------
 
-def temporal_statistics(ds):
+print("\n" + "=" * 60)
+print("TEMPORAL STATISTICS")
+print("=" * 60)
 
-    print("\n" + "=" * 60)
-    print("TEMPORAL STATISTICS")
-    print("=" * 60)
 
-    df = ds[
-        [
-            "time",
-            "model_temperature",
-            "argo_temperature",
-            "model_salinity",
-            "argo_salinity",
-        ]
-    ].to_dataframe().reset_index()
+df["date"] = pd.to_datetime(
+    df["time"]
+).dt.date
 
-    df["date"] = pd.to_datetime(
-        df["time"]
-    ).dt.date
 
-    print(
-        "\n{:<15} {:>6} {:>10} {:>10} {:>10} {:>10}".format(
-            "Date",
-            "N",
-            "T Bias",
-            "T RMSE",
-            "S Bias",
-            "S RMSE"
-        )
+print(
+    "\nDate                 N"
+    "     T Bias     T RMSE"
+    "     S Bias     S RMSE"
+)
+
+
+for date, group in df.groupby(
+    "date"
+):
+
+    t_error = (
+        group["temperature_error"]
+        .to_numpy()
     )
 
-    for date, group in df.groupby("date"):
+    s_error = (
+        group["salinity_error"]
+        .to_numpy()
+    )
 
-        temp = calculate_metrics(
-            group.model_temperature,
-            group.argo_temperature
-        )
-
-        sal = calculate_metrics(
-            group.model_salinity,
-            group.argo_salinity
-        )
-
-        print(
-            "{:<15} {:>6} {:>10.3f} {:>10.3f} {:>10.3f} {:>10.3f}".format(
-                str(date),
-                temp["n"],
-                temp["bias"],
-                temp["rmse"],
-                sal["bias"],
-                sal["rmse"],
-            )
-        )
+    print(
+        f"{str(date):<20}"
+        f"{len(group):>5}"
+        f"{bias(t_error):>12.3f}"
+        f"{rmse(t_error):>11.3f}"
+        f"{bias(s_error):>12.3f}"
+        f"{rmse(s_error):>11.3f}"
+    )
 
 
 # ---------------------------------------------------------
 # OUTLIER SENSITIVITY
 # ---------------------------------------------------------
 
-def outlier_statistics(ds):
+print("\n" + "=" * 60)
+print("OUTLIER SENSITIVITY")
+print("=" * 60)
 
-    print("\n" + "=" * 60)
-    print("OUTLIER SENSITIVITY")
-    print("=" * 60)
 
-    temp = ds.temperature_error.values
-    sal = ds.salinity_error.values
+temp_mask = (
+    np.abs(temp_error)
+    > 2
+)
 
-    temp_mask = np.abs(temp) > 2
-    sal_mask = np.abs(sal) > 1
+sal_mask = (
+    np.abs(sal_error)
+    > 1
+)
 
-    print("\nTemperature:")
-    print(
-        "Extreme observations:",
-        int(np.sum(temp_mask))
+
+temp_clean = temp_error[
+    ~temp_mask
+]
+
+sal_clean = sal_error[
+    ~sal_mask
+]
+
+
+print("\nTemperature:")
+
+print(
+    "Extreme observations:",
+    int(temp_mask.sum())
+)
+
+print(
+    "Percentage:",
+    float(
+        temp_mask.mean() * 100
     )
+)
 
-    print(
-        "Percentage:",
-        100 * np.mean(temp_mask)
-    )
 
-    print("\nSalinity:")
-    print(
-        "Extreme observations:",
-        int(np.sum(sal_mask))
-    )
+print("\nSalinity:")
 
-    print(
-        "Percentage:",
-        100 * np.mean(sal_mask)
-    )
+print(
+    "Extreme observations:",
+    int(sal_mask.sum())
+)
 
-    temp_all = np.sqrt(
-        np.mean(temp ** 2)
+print(
+    "Percentage:",
+    float(
+        sal_mask.mean() * 100
     )
+)
 
-    temp_clean = np.sqrt(
-        np.mean(temp[~temp_mask] ** 2)
-    )
 
-    sal_all = np.sqrt(
-        np.mean(sal ** 2)
-    )
+print("\nTemperature RMSE:")
 
-    sal_clean = np.sqrt(
-        np.mean(sal[~sal_mask] ** 2)
-    )
+print(
+    "All:",
+    rmse(temp_error)
+)
 
-    print("\nTemperature RMSE:")
-    print("All:", temp_all)
-    print(
-        "Without |error| > 2°C:",
-        temp_clean
-    )
+print(
+    "Without |error| > 2°C:",
+    rmse(temp_clean)
+)
 
-    print("\nSalinity RMSE:")
-    print("All:", sal_all)
-    print(
-        "Without |error| > 1 PSU:",
-        sal_clean
-    )
+
+print("\nSalinity RMSE:")
+
+print(
+    "All:",
+    rmse(sal_error)
+)
+
+print(
+    "Without |error| > 1 PSU:",
+    rmse(sal_clean)
+)
 
 
 # ---------------------------------------------------------
-# DEPTH STRUCTURE
+# DEPTH STRUCTURE CHECK
 # ---------------------------------------------------------
 
-def depth_pattern_check(ds):
+print("\n" + "=" * 60)
+print("DEPTH STRUCTURE CHECK")
+print("=" * 60)
 
-    print("\n" + "=" * 60)
-    print("DEPTH STRUCTURE CHECK")
-    print("=" * 60)
 
-    df = ds[
-        [
-            "pressure",
-            "temperature_error",
-            "salinity_error",
-        ]
-    ].to_dataframe().reset_index()
+depth = (
+    df["pressure"]
+    .to_numpy()
+)
 
-    temp_corr = df[
-        ["pressure", "temperature_error"]
-    ].corr().iloc[0, 1]
 
-    sal_corr = df[
-        ["pressure", "salinity_error"]
-    ].corr().iloc[0, 1]
+if (
+    np.std(depth) > 0
+    and np.std(temp_error) > 0
+):
 
-    print(
-        "\nOverall depth vs temperature error:",
-        temp_corr
+    depth_temp_corr = float(
+        np.corrcoef(
+            depth,
+            temp_error
+        )[0, 1]
     )
 
-    print(
-        "Overall depth vs salinity error:",
-        sal_corr
+else:
+
+    depth_temp_corr = np.nan
+
+
+if (
+    np.std(depth) > 0
+    and np.std(sal_error) > 0
+):
+
+    depth_sal_corr = float(
+        np.corrcoef(
+            depth,
+            sal_error
+        )[0, 1]
     )
 
-    print(
-        "\nNote:"
-    )
+else:
 
-    print(
-        "A weak overall correlation does not rule out "
-        "layer-specific patterns."
-    )
+    depth_sal_corr = np.nan
 
 
-# ---------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------
+print(
+    "\nOverall depth vs temperature error:",
+    depth_temp_corr
+)
 
-def main():
-
-    print("Loading collocated dataset...")
-
-    ds = load_data()
-
-    overall_statistics(ds)
-
-    depth_statistics(ds)
-
-    temporal_statistics(ds)
-
-    outlier_statistics(ds)
-
-    depth_pattern_check(ds)
-
-    print(
-        "\nEnhanced statistical validation complete."
-    )
+print(
+    "Overall depth vs salinity error:",
+    depth_sal_corr
+)
 
 
-if __name__ == "__main__":
+print("\nNote:")
 
-    main()
+print(
+    """
+Overall correlations are descriptive only.
+
+A weak overall depth correlation does not rule out
+layer-specific patterns.
+
+The statistics quantify model–observation differences;
+they do not establish the physical cause of those
+differences.
+"""
+)
+
+
+print(
+    "\nEnhanced statistical validation complete."
+)

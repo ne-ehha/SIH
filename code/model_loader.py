@@ -1,10 +1,20 @@
+from pathlib import Path
 import xarray as xr
 
 
-HYCOM_FILE = "/Users/nehasreeraj/Desktop/oceanproject_SIH/HYCOM/RSMC_hycom_20260827.nc"
+# ---------------------------------------------------------
+# PROJECT PATHS
+# ---------------------------------------------------------
 
-GLORYS_FILE = "/Users/nehasreeraj/Downloads/cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+HYCOM_FILE = PROJECT_ROOT / "HYCOM" / "RSMC_hycom_20260827.nc"
+GLORYS_FILE = PROJECT_ROOT / "GLORY" / "cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc"
+
+
+# ---------------------------------------------------------
+# LOAD HYCOM
+# ---------------------------------------------------------
 
 def load_hycom():
     """
@@ -28,6 +38,10 @@ def load_hycom():
     return ds
 
 
+# ---------------------------------------------------------
+# LOAD GLORYS
+# ---------------------------------------------------------
+
 def load_glorys():
     """
     Load the GLORYS12V1 research/reanalysis dataset
@@ -46,11 +60,11 @@ def load_glorys():
     return ds
 
 
+# ---------------------------------------------------------
+# DATASET SUMMARY
+# ---------------------------------------------------------
+
 def print_dataset_summary(name, ds):
-    """
-    Print a simple summary so we can verify the
-    standardized dataset.
-    """
 
     print("\n" + "=" * 60)
     print(name)
@@ -77,6 +91,10 @@ def print_dataset_summary(name, ds):
     print("\nDepth:")
     print(float(ds.depth.min()), "to", float(ds.depth.max()))
 
+
+# ---------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------
 
 if __name__ == "__main__":
 

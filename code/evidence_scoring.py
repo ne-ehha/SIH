@@ -1,316 +1,337 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 
-FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATH
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+INPUT_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 
-def load_data():
-    return xr.open_dataset(FILE)
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+print("Loading collocated dataset...")
+
+ds = xr.open_dataset(INPUT_FILE)
+
+df = ds.to_dataframe().reset_index()
+
+df = df.dropna(
+    subset=[
+        "temperature_error",
+        "salinity_error",
+        "pressure",
+        "latitude",
+        "longitude",
+    ]
+)
 
 
-def calculate_statistics(values):
-    values = np.asarray(values, dtype=float)
-    values = values[np.isfinite(values)]
+# ---------------------------------------------------------
+# EVIDENCE CLASSIFICATION
+# ---------------------------------------------------------
 
-    n = len(values)
-
-    if n == 0:
-        return None
-
-    bias = np.mean(values)
-    std = np.std(values, ddof=1) if n > 1 else 0.0
-    rmse = np.sqrt(np.mean(values ** 2))
-    mae = np.mean(np.abs(values))
-    median_ae = np.median(np.abs(values))
-
-    if n > 1:
-        se = std / np.sqrt(n)
-        ci_low = bias - 1.96 * se
-        ci_high = bias + 1.96 * se
-    else:
-        ci_low = np.nan
-        ci_high = np.nan
-
-    return {
-        "n": n,
-        "bias": bias,
-        "std": std,
-        "rmse": rmse,
-        "mae": mae,
-        "median_ae": median_ae,
-        "ci_low": ci_low,
-        "ci_high": ci_high,
-    }
-
-
-def evidence_rating(stats, meaningful_bias):
+def classify_evidence(
+    n,
+    bias,
+    weak_threshold=0.10,
+    moderate_threshold=0.20,
+    strong_threshold=0.50,
+):
     """
-    Conservative evidence rating.
+    Classify the strength of a pattern using both
+    sample size and magnitude of bias.
 
-    Strong:
-        Large effect + adequate sample + CI excludes zero
-
-    Moderate:
-        Some evidence, but one component is weaker
-
-    Weak:
-        Small effect, small sample, or uncertain estimate
+    This is an exploratory evidence-ranking scheme.
+    It is NOT a formal statistical significance test.
     """
 
-    n = stats["n"]
-    bias = abs(stats["bias"])
-    ci_low = stats["ci_low"]
-    ci_high = stats["ci_high"]
+    absolute_bias = abs(bias)
 
-    effect = bias >= meaningful_bias
+    if n < 20:
+        return "WEAK"
 
-    ci_excludes_zero = (
-        np.isfinite(ci_low)
-        and np.isfinite(ci_high)
-        and (ci_low > 0 or ci_high < 0)
-    )
-
-    if n >= 100 and effect and ci_excludes_zero:
+    if absolute_bias >= strong_threshold:
         return "STRONG"
 
-    if n >= 30 and effect and ci_excludes_zero:
-        return "MODERATE"
-
-    if n >= 30 and (
-        effect or ci_excludes_zero
-    ):
+    if absolute_bias >= moderate_threshold:
         return "MODERATE"
 
     return "WEAK"
 
 
-def temperature_depth_analysis(ds):
+# ---------------------------------------------------------
+# TEMPERATURE DEPTH EVIDENCE
+# ---------------------------------------------------------
 
-    print("\n" + "=" * 60)
-    print("TEMPERATURE DEPTH EVIDENCE")
-    print("=" * 60)
+print("\n" + "=" * 60)
+print("TEMPERATURE DEPTH EVIDENCE")
+print("=" * 60)
 
-    df = ds[
-        [
-            "pressure",
-            "temperature_error"
-        ]
-    ].to_dataframe().reset_index()
 
-    bins = [
-        0, 10, 25, 50,
-        100, 200, 300,
-        400, 500
+depth_bins = [
+    0,
+    10,
+    25,
+    50,
+    100,
+    200,
+    300,
+    400,
+    500,
+]
+
+
+depth_labels = [
+    "0-10",
+    "10-25",
+    "25-50",
+    "50-100",
+    "100-200",
+    "200-300",
+    "300-400",
+    "400-500",
+]
+
+
+df["depth_bin"] = pd.cut(
+    df["pressure"],
+    bins=depth_bins,
+    labels=depth_labels,
+    include_lowest=True
+)
+
+
+print(
+    "\nDepth             N"
+    "       Bias       RMSE     Evidence"
+)
+
+
+for label in depth_labels:
+
+    subset = df[
+        df["depth_bin"] == label
     ]
 
-    labels = [
-        "0-10",
-        "10-25",
-        "25-50",
-        "50-100",
-        "100-200",
-        "200-300",
-        "300-400",
-        "400-500"
-    ]
+    if len(subset) == 0:
+        continue
 
-    df["depth_bin"] = pd.cut(
-        df["pressure"],
-        bins=bins,
-        labels=labels,
-        include_lowest=True
+    error = (
+        subset["temperature_error"]
+        .to_numpy()
+    )
+
+    n = len(error)
+
+    mean_bias = float(
+        np.mean(error)
+    )
+
+    rmse = float(
+        np.sqrt(
+            np.mean(error ** 2)
+        )
+    )
+
+    evidence = classify_evidence(
+        n,
+        mean_bias
     )
 
     print(
-        "\n{:<12} {:>6} {:>10} {:>10} {:>12}".format(
-            "Depth",
-            "N",
-            "Bias",
-            "RMSE",
-            "Evidence"
-        )
+        f"{str(label):<14}"
+        f"{n:>6}"
+        f"{mean_bias:>12.3f}"
+        f"{rmse:>11.3f}"
+        f"{evidence:>13}"
     )
 
-    results = []
 
-    for depth, group in df.groupby(
-        "depth_bin",
-        observed=True
-    ):
+# ---------------------------------------------------------
+# SALINITY SPATIAL EVIDENCE
+# ---------------------------------------------------------
 
-        stats = calculate_statistics(
-            group["temperature_error"]
-        )
-
-        rating = evidence_rating(
-            stats,
-            meaningful_bias=0.30
-        )
-
-        results.append({
-            "depth": str(depth),
-            **stats,
-            "evidence": rating
-        })
-
-        print(
-            "{:<12} {:>6} {:>10.3f} {:>10.3f} {:>12}".format(
-                str(depth),
-                stats["n"],
-                stats["bias"],
-                stats["rmse"],
-                rating
-            )
-        )
-
-    return pd.DataFrame(results)
+print("\n" + "=" * 60)
+print("SALINITY SPATIAL EVIDENCE")
+print("=" * 60)
 
 
-def salinity_spatial_analysis(ds):
+df["latitude_cell"] = (
+    df["latitude"] * 2
+).round() / 2
 
-    print("\n" + "=" * 60)
-    print("SALINITY SPATIAL EVIDENCE")
-    print("=" * 60)
 
-    df = ds[
+df["longitude_cell"] = (
+    df["longitude"] * 2
+).round() / 2
+
+
+spatial = (
+    df.groupby(
         [
-            "latitude",
-            "longitude",
-            "salinity_error"
-        ]
-    ].to_dataframe().reset_index()
-
-    df["lat_bin"] = (
-        np.floor(df["latitude"] * 2) / 2
+            "latitude_cell",
+            "longitude_cell",
+        ],
+        observed=True
     )
-
-    df["lon_bin"] = (
-        np.floor(df["longitude"] * 2) / 2
+    .agg(
+        n=("salinity_error", "size"),
+        salinity_bias=(
+            "salinity_error",
+            "mean"
+        ),
     )
+    .reset_index()
+)
 
-    grouped = df.groupby(
-        ["lat_bin", "lon_bin"]
-    )
 
-    results = []
+spatial["evidence"] = spatial.apply(
+    lambda row: classify_evidence(
+        int(row["n"]),
+        float(row["salinity_bias"]),
+        weak_threshold=0.10,
+        moderate_threshold=0.20,
+        strong_threshold=1.00,
+    ),
+    axis=1
+)
 
-    for (lat, lon), group in grouped:
 
-        if len(group) < 20:
-            continue
-
-        stats = calculate_statistics(
-            group["salinity_error"]
-        )
-
-        rating = evidence_rating(
-            stats,
-            meaningful_bias=0.50
-        )
-
-        results.append({
-            "latitude": lat,
-            "longitude": lon,
-            **stats,
-            "evidence": rating
-        })
-
-    result = pd.DataFrame(results)
-
-    if len(result) == 0:
-        print("\nNo spatial cells available.")
-        return result
-
-    result = result.sort_values(
-        "bias",
-        key=lambda x: x.abs(),
+spatial = (
+    spatial
+    .sort_values(
+        "salinity_bias",
+        key=lambda x: np.abs(x),
         ascending=False
     )
+    .head(10)
+)
+
+
+print(
+    "\nLat      Lon           N"
+    "       Bias     Evidence"
+)
+
+
+for _, row in spatial.iterrows():
 
     print(
-        "\n{:<8} {:<8} {:>6} {:>10} {:>12}".format(
-            "Lat",
-            "Lon",
-            "N",
-            "Bias",
-            "Evidence"
-        )
-    )
-
-    for _, row in result.head(10).iterrows():
-
-        print(
-            "{:<8.1f} {:<8.1f} {:>6} {:>10.3f} {:>12}".format(
-                row["latitude"],
-                row["longitude"],
-                int(row["n"]),
-                row["bias"],
-                row["evidence"]
-            )
-        )
-
-    return result
-
-
-def outlier_analysis(ds):
-
-    print("\n" + "=" * 60)
-    print("OUTLIER EVIDENCE")
-    print("=" * 60)
-
-    temp = ds.temperature_error.values
-    sal = ds.salinity_error.values
-
-    temp_mask = np.abs(temp) > 2
-    sal_mask = np.abs(sal) > 1
-
-    print(
-        "\nTemperature extreme observations:",
-        int(np.sum(temp_mask))
-    )
-
-    print(
-        "Temperature percentage:",
-        f"{100 * np.mean(temp_mask):.2f}%"
-    )
-
-    print(
-        "\nSalinity extreme observations:",
-        int(np.sum(sal_mask))
-    )
-
-    print(
-        "Salinity percentage:",
-        f"{100 * np.mean(sal_mask):.2f}%"
-    )
-
-    print(
-        "\nThese are investigation targets, "
-        "not automatic bad-data flags."
+        f"{row['latitude_cell']:<8.1f}"
+        f"{row['longitude_cell']:<12.1f}"
+        f"{int(row['n']):>5}"
+        f"{row['salinity_bias']:>12.3f}"
+        f"{row['evidence']:>13}"
     )
 
 
-def main():
+# ---------------------------------------------------------
+# OUTLIER EVIDENCE
+# ---------------------------------------------------------
 
-    print("Loading collocated dataset...")
-
-    ds = load_data()
-
-    temperature_depth_analysis(ds)
-
-    salinity_spatial_analysis(ds)
-
-    outlier_analysis(ds)
-
-    print(
-        "\nEvidence scoring complete."
-    )
+print("\n" + "=" * 60)
+print("OUTLIER EVIDENCE")
+print("=" * 60)
 
 
-if __name__ == "__main__":
-    main()
+temperature_outliers = (
+    np.abs(
+        df["temperature_error"]
+    ) > 2
+)
+
+
+salinity_outliers = (
+    np.abs(
+        df["salinity_error"]
+    ) > 1
+)
+
+
+temperature_count = int(
+    temperature_outliers.sum()
+)
+
+
+salinity_count = int(
+    salinity_outliers.sum()
+)
+
+
+temperature_percentage = (
+    temperature_count
+    / len(df)
+    * 100
+)
+
+
+salinity_percentage = (
+    salinity_count
+    / len(df)
+    * 100
+)
+
+
+print(
+    "\nTemperature extreme observations:",
+    temperature_count
+)
+
+print(
+    "Temperature percentage:",
+    f"{temperature_percentage:.2f}%"
+)
+
+
+print(
+    "\nSalinity extreme observations:",
+    salinity_count
+)
+
+print(
+    "Salinity percentage:",
+    f"{salinity_percentage:.2f}%"
+)
+
+
+# ---------------------------------------------------------
+# SCIENTIFIC INTERPRETATION
+# ---------------------------------------------------------
+
+print("\nInterpretation:")
+
+print(
+    """
+Evidence labels are exploratory rankings based on
+sample size and discrepancy magnitude.
+
+They are NOT formal proof of statistical significance.
+
+Strong or moderate evidence indicates a pattern
+worth investigating further.
+
+Extreme observations are investigation targets,
+not automatic bad-data flags.
+
+Most importantly, evidence of a model–observation
+discrepancy does not establish its physical cause.
+Possible causes must be tested independently.
+"""
+)
+
+
+print(
+    "\nEvidence scoring complete."
+)

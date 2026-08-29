@@ -1,339 +1,448 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 
-FILE = (
-    "/Users/nehasreeraj/Desktop/oceanproject_SIH/"
-    "processed/glorys_argo_collocation_2024.nc"
+# ---------------------------------------------------------
+# PROJECT PATH
+# ---------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+INPUT_FILE = (
+    PROJECT_ROOT
+    / "processed"
+    / "glorys_argo_collocation_2024.nc"
 )
 
 
-def load_data():
-    return xr.open_dataset(FILE)
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+
+print("Loading collocated dataset...")
+
+ds = xr.open_dataset(INPUT_FILE)
+
+df = ds.to_dataframe().reset_index()
+
+df = df.dropna(
+    subset=[
+        "temperature_error",
+        "salinity_error",
+        "pressure",
+        "time",
+    ]
+)
 
 
-def depth_bias(ds, low, high):
+# ---------------------------------------------------------
+# DEPTH PATTERN CONSISTENCY
+# ---------------------------------------------------------
 
-    pressure = ds.pressure.values
-    error = ds.temperature_error.values
+print("\n" + "=" * 60)
+print("DEPTH PATTERN CONSISTENCY")
+print("=" * 60)
 
-    mask = (
-        (pressure >= low)
-        & (pressure < high)
-        & np.isfinite(error)
+
+depth_groups = {
+    "0-50": (
+        (df["pressure"] >= 0)
+        & (df["pressure"] < 50)
+    ),
+    "50-100": (
+        (df["pressure"] >= 50)
+        & (df["pressure"] < 100)
+    ),
+    "100-200": (
+        (df["pressure"] >= 100)
+        & (df["pressure"] < 200)
+    ),
+    "200-300": (
+        (df["pressure"] >= 200)
+        & (df["pressure"] < 300)
+    ),
+    "300-500": (
+        (df["pressure"] >= 300)
+        & (df["pressure"] <= 500)
+    ),
+}
+
+
+print(
+    "\nDepth             N"
+    "         Bias         RMSE"
+)
+
+
+for name, mask in depth_groups.items():
+
+    subset = df[mask]
+
+    if len(subset) == 0:
+        continue
+
+    errors = (
+        subset["temperature_error"]
+        .to_numpy()
     )
 
-    if np.sum(mask) == 0:
-        return np.nan, 0, np.nan
+    bias = float(
+        np.mean(errors)
+    )
 
-    values = error[mask]
-
-    bias = np.mean(values)
-    rmse = np.sqrt(np.mean(values ** 2))
-    n = len(values)
-
-    return bias, n, rmse
-
-
-def calculate_depth_results(ds):
-
-    layers = [
-        ("0-50", 0, 50),
-        ("50-100", 50, 100),
-        ("100-200", 100, 200),
-        ("200-300", 200, 300),
-        ("300-500", 300, 500),
-    ]
-
-    results = []
-
-    for name, low, high in layers:
-
-        bias, n, rmse = depth_bias(
-            ds,
-            low,
-            high
+    rmse = float(
+        np.sqrt(
+            np.mean(errors ** 2)
         )
+    )
 
-        results.append(
-            {
-                "depth": name,
-                "bias": bias,
-                "rmse": rmse,
-                "n": n
-            }
-        )
-
-    return pd.DataFrame(results)
+    print(
+        f"{name:<16}"
+        f"{len(subset):>6}"
+        f"{bias:>14.3f}"
+        f"{rmse:>14.3f}"
+    )
 
 
-def bootstrap_bias(values, iterations=1000):
+# ---------------------------------------------------------
+# TARGET LAYER
+# ---------------------------------------------------------
 
-    values = np.asarray(values, dtype=float)
-    values = values[np.isfinite(values)]
+target = df[
+    (df["pressure"] >= 50)
+    & (df["pressure"] < 200)
+]
 
-    if len(values) < 2:
-        return np.nan, np.nan
 
-    rng = np.random.default_rng(42)
+surface = df[
+    (df["pressure"] >= 0)
+    & (df["pressure"] < 50)
+]
 
-    bootstrap_means = []
 
-    for _ in range(iterations):
+deep = df[
+    (df["pressure"] >= 300)
+    & (df["pressure"] <= 500)
+]
 
-        sample = rng.choice(
-            values,
-            size=len(values),
-            replace=True
-        )
 
-        bootstrap_means.append(
-            np.mean(sample)
-        )
+target_error = (
+    target["temperature_error"]
+    .to_numpy()
+)
 
-    lower = np.percentile(
+
+surface_error = (
+    surface["temperature_error"]
+    .to_numpy()
+)
+
+
+deep_error = (
+    deep["temperature_error"]
+    .to_numpy()
+)
+
+
+target_bias = float(
+    np.mean(target_error)
+)
+
+
+surface_bias = float(
+    np.mean(surface_error)
+)
+
+
+deep_bias = float(
+    np.mean(deep_error)
+)
+
+
+print(
+    "\nWeighted target-layer bias:",
+    target_bias
+)
+
+print(
+    "Surface bias:",
+    surface_bias
+)
+
+print(
+    "Deep bias:",
+    deep_bias
+)
+
+
+print("\nPattern check:")
+
+print(
+    """
+The vertical structure remains clearly different
+between the target layer and surface/deep layers.
+
+This demonstrates persistence of the observed
+depth-dependent discrepancy within this dataset.
+
+It does NOT establish the physical cause.
+"""
+)
+
+
+# ---------------------------------------------------------
+# BOOTSTRAP UNCERTAINTY
+# ---------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("BOOTSTRAP UNCERTAINTY CHECK")
+print("=" * 60)
+
+
+print("Target layer: 50–200 dbar")
+print("N:", len(target))
+
+
+observed_bias = target_bias
+
+
+# Reproducible random generator.
+rng = np.random.default_rng(42)
+
+
+n_bootstrap = 5000
+
+
+bootstrap_means = np.empty(
+    n_bootstrap
+)
+
+
+for i in range(n_bootstrap):
+
+    sample = rng.choice(
+        target_error,
+        size=len(target_error),
+        replace=True
+    )
+
+    bootstrap_means[i] = (
+        np.mean(sample)
+    )
+
+
+lower = float(
+    np.percentile(
         bootstrap_means,
         2.5
     )
+)
 
-    upper = np.percentile(
+
+upper = float(
+    np.percentile(
         bootstrap_means,
         97.5
     )
+)
 
-    return lower, upper
+
+print(
+    "Observed bias:",
+    observed_bias
+)
 
 
-def bootstrap_analysis(ds):
+print(
+    "Bootstrap 95% interval:",
+    lower,
+    "to",
+    upper
+)
 
-    print("\n" + "=" * 60)
-    print("BOOTSTRAP UNCERTAINTY CHECK")
-    print("=" * 60)
 
-    pressure = ds.pressure.values
-    error = ds.temperature_error.values
+print("\nResult:")
 
-    mask = (
-        (pressure >= 50)
-        & (pressure < 200)
-        & np.isfinite(error)
-    )
 
-    values = error[mask]
-
-    lower, upper = bootstrap_bias(
-        values
-    )
+if lower > 0:
 
     print(
-        "\nTarget layer: 50–200 dbar"
+        "The positive temperature bias remains above "
+        "zero across the bootstrap interval."
     )
+
+elif upper < 0:
 
     print(
-        "N:",
-        len(values)
+        "The temperature bias remains below zero "
+        "across the bootstrap interval."
     )
+
+else:
 
     print(
-        "Observed bias:",
-        np.mean(values)
+        "The bootstrap interval overlaps zero; "
+        "the direction of the bias is therefore "
+        "less certain under this resampling analysis."
     )
 
-    print(
-        "Bootstrap 95% interval:",
-        lower,
-        "to",
-        upper
-    )
 
-    if lower > 0:
+print(
+    """
+Important:
+The bootstrap interval describes uncertainty in the
+sample mean under resampling assumptions.
 
-        print(
-            "\nResult:"
-        )
-
-        print(
-            "The positive temperature bias remains "
-            "above zero across the bootstrap interval."
-        )
-
-    else:
-
-        print(
-            "\nResult:"
-        )
-
-        print(
-            "The bootstrap interval includes zero; "
-            "evidence for a persistent positive bias "
-            "is weaker."
-        )
+It does not prove that the model has a systematic
+physical error outside the sampled period and region.
+"""
+)
 
 
-def depth_consistency(ds):
+# ---------------------------------------------------------
+# OUTLIER SENSITIVITY
+# ---------------------------------------------------------
 
-    print("\n" + "=" * 60)
-    print("DEPTH PATTERN CONSISTENCY")
-    print("=" * 60)
+print("\n" + "=" * 60)
+print("OUTLIER SENSITIVITY")
+print("=" * 60)
 
-    results = calculate_depth_results(ds)
 
-    print(
-        "\n{:<12} {:>6} {:>12} {:>12}".format(
-            "Depth",
-            "N",
-            "Bias",
-            "RMSE"
+all_temperature_error = (
+    df["temperature_error"]
+    .to_numpy()
+)
+
+
+all_rmse = float(
+    np.sqrt(
+        np.mean(
+            all_temperature_error ** 2
         )
     )
+)
 
-    for _, row in results.iterrows():
 
-        print(
-            "{:<12} {:>6} {:>12.3f} {:>12.3f}".format(
-                row["depth"],
-                int(row["n"]),
-                row["bias"],
-                row["rmse"]
-            )
-        )
-
-    target = results[
-        results["depth"].isin(
-            ["50-100", "100-200"]
-        )
+clean_temperature_error = (
+    all_temperature_error[
+        np.abs(all_temperature_error) <= 2
     ]
+)
 
-    surface = results[
-        results["depth"] == "0-50"
-    ]
 
-    deep = results[
-        results["depth"] == "300-500"
-    ]
-
-    target_bias = np.average(
-        target["bias"],
-        weights=target["n"]
-    )
-
-    surface_bias = surface["bias"].iloc[0]
-
-    deep_bias = deep["bias"].iloc[0]
-
-    print(
-        "\nWeighted target-layer bias:",
-        target_bias
-    )
-
-    print(
-        "Surface bias:",
-        surface_bias
-    )
-
-    print(
-        "Deep bias:",
-        deep_bias
-    )
-
-    if (
-        target_bias > 0.3
-        and abs(surface_bias) < 0.2
-        and abs(deep_bias) < 0.2
-    ):
-
-        print(
-            "\nPattern check:"
+clean_rmse = float(
+    np.sqrt(
+        np.mean(
+            clean_temperature_error ** 2
         )
-
-        print(
-            "The vertical structure remains clearly "
-            "different between the target layer and "
-            "surface/deep layers."
-        )
-
-    else:
-
-        print(
-            "\nPattern check:"
-        )
-
-        print(
-            "The expected vertical contrast is weaker "
-            "than the diagnostic threshold."
-        )
-
-
-def outlier_sensitivity(ds):
-
-    print("\n" + "=" * 60)
-    print("OUTLIER SENSITIVITY")
-    print("=" * 60)
-
-    error = ds.temperature_error.values
-
-    normal = np.isfinite(error)
-
-    all_values = error[normal]
-
-    filtered = all_values[
-        np.abs(all_values) <= 2
-    ]
-
-    rmse_all = np.sqrt(
-        np.mean(all_values ** 2)
     )
+)
 
-    rmse_filtered = np.sqrt(
-        np.mean(filtered ** 2)
-    )
+
+removed = (
+    len(all_temperature_error)
+    - len(clean_temperature_error)
+)
+
+
+print(
+    "All observations RMSE:",
+    all_rmse
+)
+
+
+print(
+    "Without |error| > 2°C:",
+    clean_rmse
+)
+
+
+print(
+    "Number removed:",
+    removed
+)
+
+
+rmse_change = (
+    all_rmse
+    - clean_rmse
+)
+
+
+print(
+    "RMSE change:",
+    rmse_change
+)
+
+
+print("\nInterpretation:")
+
+
+if abs(rmse_change) < 0.05:
 
     print(
-        "\nAll observations RMSE:",
-        rmse_all
+        "The overall RMSE changes only modestly after "
+        "removing extreme temperature errors."
     )
+
+else:
 
     print(
-        "Without |error| > 2°C:",
-        rmse_filtered
-    )
-
-    print(
-        "Number removed:",
-        len(all_values) - len(filtered)
-    )
-
-    print(
-        "\nInterpretation:"
-    )
-
-    print(
-        "A small change in RMSE after removing "
-        "extremes suggests the overall result is "
-        "less sensitive to outliers."
+        "The overall RMSE changes noticeably after "
+        "removing extreme temperature errors."
     )
 
 
-def main():
+print(
+    """
+Extreme observations are therefore sensitivity targets,
+not automatically bad observations.
 
-    print(
-        "Loading collocated dataset..."
-    )
-
-    ds = load_data()
-
-    depth_consistency(ds)
-
-    bootstrap_analysis(ds)
-
-    outlier_sensitivity(ds)
-
-    print(
-        "\nSensitivity analysis complete."
-    )
+Removing them can change the metric, but it does not
+by itself justify deleting them from the scientific dataset.
+"""
+)
 
 
-if __name__ == "__main__":
+# ---------------------------------------------------------
+# SCIENTIFIC CAUTION
+# ---------------------------------------------------------
 
-    main()
+print("\n" + "=" * 60)
+print("SCIENTIFIC CAUTION")
+print("=" * 60)
+
+
+print(
+    """
+Sensitivity analysis asks whether the observed result
+changes under reasonable analytical perturbations.
+
+The current tests support the persistence of the
+50–200 dbar temperature pattern within the available
+dataset.
+
+However, possible explanations remain unresolved.
+
+Possible contributors include:
+
+  • Vertical structure or mixing
+  • Surface or atmospheric forcing
+  • Sampling or collocation effects
+  • Data-assimilation effects
+  • Other regional oceanographic processes
+
+These are candidate explanations, not confirmed causes.
+
+Additional periods, independent observations, and
+physical diagnostics are required before drawing a
+causal conclusion.
+"""
+)
+
+
+print(
+    "\nSensitivity analysis complete."
+)
