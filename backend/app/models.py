@@ -31,7 +31,7 @@ ComparisonVariable = Literal["temperature", "salinity"]
 
 class ComparisonRequest(BaseModel):
     location: Coordinates
-    variable: ComparisonVariable
+    variable: OceanVariable
     depth: float = Field(..., ge=0, le=500)
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
@@ -39,7 +39,7 @@ class ComparisonRequest(BaseModel):
 
 class ProfileRequest(BaseModel):
     location: Coordinates
-    variable: ComparisonVariable
+    variable: OceanVariable
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
 
@@ -47,7 +47,7 @@ class ProfileRequest(BaseModel):
 class DiscrepancyRequest(BaseModel):
     region: str
     bounds: Bounds
-    variable: ComparisonVariable
+    variable: OceanVariable
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
 
@@ -60,7 +60,7 @@ class ObservationRequest(BaseModel):
 
 class DiagnosticRequest(BaseModel):
     location: Coordinates
-    variable: ComparisonVariable
+    variable: OceanVariable
     depth: float = Field(..., ge=0, le=500)
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
