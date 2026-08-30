@@ -1,0 +1,543 @@
+INCOIS HYCOM 2.35 — DATASET METADATA
+=====================================
+
+
+1. DATASET IDENTIFICATION
+-------------------------
+
+Dataset:
+INCOIS HYCOM 2.35 Operational Ocean Forecast
+
+Provider:
+Indian National Centre for Ocean Information Services (INCOIS)
+
+Product:
+RSMC HYCOM Ocean Forecast
+
+Downloaded file:
+RSMC_hycom_20260827.nc
+
+Data type:
+Operational ocean model forecast
+
+File format:
+NetCDF-3 / CDM
+
+Project role:
+PREDICTED / MODEL DATA
+
+
+2. PROJECT USAGE
+----------------
+
+This dataset represents the model-predicted ocean state
+for the Operational Mode of the project.
+
+It will be compared against near-real-time in-situ
+observations, primarily INCOIS / Argo NRT profiles.
+
+Primary comparison:
+
+INCOIS HYCOM model
+        ↕
+Model–Observation Collocation
+        ↕
+INCOIS / Argo NRT observations
+
+
+3. SPATIAL SUBSET
+-----------------
+
+Target region:
+Bay of Bengal
+
+Latitude range:
+5°N to 22°N
+
+Longitude range:
+78°E to 100°E
+
+Latitude dimension:
+74 points
+
+Longitude dimension:
+92 points
+
+Horizontal stride:
+4
+
+Note:
+The above spatial range and stride describe the
+server-side subset requested from the original
+INCOIS HYCOM dataset.
+
+
+4. VERTICAL COVERAGE
+--------------------
+
+Depth coordinate:
+DEPTH
+
+Vertical axis:
+Z
+
+Depth positive direction:
+down
+
+Number of depth levels:
+6
+
+Depth range:
+0–500 m
+
+Exact depth levels:
+
+0 m
+17.5 m
+52.5 m
+125 m
+275 m
+500 m
+
+Vertical stride:
+1
+
+
+5. TEMPORAL COVERAGE
+--------------------
+
+Time coordinate:
+TIME
+
+Number of time steps:
+24
+
+Start:
+2026-08-26 06:00:00 UTC
+
+End:
+2026-09-01 00:00:00 UTC
+
+Time coordinate units:
+days since 1900-12-31
+
+Calendar:
+standard
+
+
+6. VARIABLES
+------------
+
+
+6.1 TEMP
+--------
+
+Variable name:
+TEMP
+
+Description:
+Temperature
+
+Long name in file:
+TEMP
+
+Dimensions:
+TIME × DEPTH × LAT × LON
+
+Units:
+Not specified in the NetCDF variable attributes.
+
+Important:
+The unit should not be assumed from the variable name.
+Verify against the official INCOIS product documentation
+before displaying the unit in the application.
+
+
+6.2 SALN
+--------
+
+Variable name:
+SALN
+
+Description:
+Salinity
+
+Long name in file:
+SALN
+
+Dimensions:
+TIME × DEPTH × LAT × LON
+
+Units:
+Not specified in the NetCDF variable attributes.
+
+Important:
+The unit should not be assumed from the variable name.
+Verify against the official INCOIS product documentation
+before displaying the unit in the application.
+
+
+6.3 UVEL
+---------
+
+Variable name:
+UVEL
+
+Description:
+Eastward current velocity
+
+Long name in file:
+eastward current
+
+Standard name:
+eastward_current
+
+Dimensions:
+TIME × DEPTH × LAT × LON
+
+Units:
+m/s
+
+
+6.4 VVEL
+---------
+
+Variable name:
+VVEL
+
+Description:
+Northward current velocity
+
+Long name in file:
+northward current
+
+Standard name:
+northward_current
+
+Dimensions:
+TIME × DEPTH × LAT × LON
+
+Units:
+m/s
+
+
+7. VARIABLE DIMENSIONS
+----------------------
+
+TEMP:
+TIME × DEPTH × LAT × LON
+
+SALN:
+TIME × DEPTH × LAT × LON
+
+UVEL:
+TIME × DEPTH × LAT × LON
+
+VVEL:
+TIME × DEPTH × LAT × LON
+
+
+8. DATASET DIMENSIONS
+---------------------
+
+TIME:
+24
+
+DEPTH:
+6
+
+LAT:
+74
+
+LON:
+92
+
+
+9. MODEL VARIABLES USED IN PROJECT
+-----------------------------------
+
+Primary variables for prototype:
+
+Temperature:
+TEMP
+
+Salinity:
+SALN
+
+Eastward current:
+UVEL
+
+Northward current:
+VVEL
+
+These variables will be used for model visualization
+and model–observation comparison.
+
+
+10. SUBSETTING PARAMETERS
+-------------------------
+
+Original dataset:
+INCOIS HYCOM operational forecast
+
+Subset region:
+
+North:
+22°N
+
+South:
+5°N
+
+West:
+78°E
+
+East:
+100°E
+
+Depth:
+0–500 m
+
+Variables:
+TEMP
+SALN
+UVEL
+VVEL
+
+Horizontal stride:
+4
+
+Vertical stride:
+1
+
+Time period:
+2026-08-26 06:00 UTC
+to
+2026-09-01 00:00 UTC
+
+Output format:
+NetCDF-3
+
+
+11. ORIGINAL VS DOWNLOADED DATA
+-------------------------------
+
+Original operational file:
+RSMC_hycom_20260827.nc
+
+Original approximate file size:
+9.069 GB
+
+Downloaded file:
+RSMC_hycom_20260827.nc
+
+The downloaded file is a server-side subset of the
+larger operational HYCOM dataset.
+
+The subset was created to make the dataset practical
+for prototype development and browser-based visualization.
+
+
+12. SCIENTIFIC COLLOCATION
+--------------------------
+
+The model and observation datasets will not necessarily
+have identical:
+
+- Latitude
+- Longitude
+- Time
+- Depth
+
+Therefore, model–observation comparison must perform
+appropriate spatial, temporal and vertical collocation.
+
+Conceptually:
+
+Model location/time/depth
+          ↕
+Collocation
+          ↕
+Observation location/time/depth
+          ↓
+Model − Observation
+          ↓
+Error
+
+
+13. MODEL–OBSERVATION COMPARISON
+--------------------------------
+
+For each matched observation, the system may calculate:
+
+Bias:
+Model − Observation
+
+Absolute error:
+|Model − Observation|
+
+RMSE:
+sqrt(mean((Model − Observation)^2))
+
+The system should retain information about the
+collocation method used for each comparison.
+
+
+14. IMPORTANT SCIENTIFIC NOTES
+------------------------------
+
+1. This dataset is MODEL DATA, not in-situ observation data.
+
+2. INCOIS HYCOM provides the predicted/model component
+   of the Operational Mode.
+
+3. Argo observations provide the observational component.
+
+4. Model and observation values should not be compared
+   solely because they occur on the same calendar day.
+
+5. Spatial, temporal and vertical differences must be
+   considered during collocation.
+
+6. The model depth levels are unevenly spaced:
+
+   0
+   17.5
+   52.5
+   125
+   275
+   500 m
+
+7. TEMP and SALN do not contain explicit unit attributes
+   in this downloaded NetCDF file.
+
+8. UVEL and VVEL explicitly contain units of m/s.
+
+9. Lack of an explicit unit attribute for TEMP or SALN
+   does not mean the variable has no unit. The unit should
+   be verified from the official product documentation.
+
+10. The downloaded file should be treated as the original
+    scientific input and should not be manually edited.
+
+
+15. VERIFIED FILE METADATA
+--------------------------
+
+The following information was directly inspected from
+the downloaded NetCDF file using Python/xarray:
+
+DEPTH values:
+0
+17.5
+52.5
+125
+275
+500 m
+
+TEMP dimensions:
+TIME × DEPTH × LAT × LON
+
+SALN dimensions:
+TIME × DEPTH × LAT × LON
+
+UVEL dimensions:
+TIME × DEPTH × LAT × LON
+
+VVEL dimensions:
+TIME × DEPTH × LAT × LON
+
+UVEL units:
+m/s
+
+VVEL units:
+m/s
+
+UVEL standard name:
+eastward_current
+
+VVEL standard name:
+northward_current
+
+
+16. SOURCE HISTORY
+------------------
+
+TEMP history:
+From RSMC_hycom_20260827
+
+SALN history:
+From RSMC_hycom_20260827
+
+UVEL history:
+From RSMC_hycom_20260827
+
+VVEL history:
+From RSMC_hycom_20260827
+
+
+17. DATA INTEGRITY
+------------------
+
+Original downloaded NetCDF file:
+RSMC_hycom_20260827.nc
+
+Do not convert the original file to CSV for primary
+scientific storage.
+
+Keep the NetCDF file unchanged.
+
+Any processed, interpolated, collocated or derived data
+should be stored separately from the original dataset.
+
+
+18. PROJECT DATA FLOW
+---------------------
+
+INCOIS HYCOM
+     ↓
+Subset / preprocessing
+     ↓
+Model data
+     ↓
+Spatial + temporal + vertical collocation
+     ↓
+Compare with Argo observations
+     ↓
+Model − Observation error
+     ↓
+Error localization
+     ↓
+Error fingerprint
+     ↓
+Scientific diagnostic
+
+
+19. STATUS
+----------
+
+Dataset:
+READY
+
+Metadata inspection:
+COMPLETED
+
+Spatial subset:
+COMPLETED
+
+Depth verification:
+COMPLETED
+
+Variable verification:
+COMPLETED
+
+Dimension verification:
+COMPLETED
+
+Current velocity units:
+VERIFIED
+
+Temperature units:
+PENDING OFFICIAL PRODUCT-DOCUMENTATION VERIFICATION
+
+Salinity units:
+PENDING OFFICIAL PRODUCT-DOCUMENTATION VERIFICATION
