@@ -1,0 +1,263 @@
+========================================
+GLORYS12V1 DATASET METADATA
+========================================
+
+Dataset:
+GLORYS12V1
+
+Product name:
+Global Ocean Physics Reanalysis
+
+Product ID:
+GLOBAL_MULTIYEAR_PHY_001_030
+
+Dataset ID:
+cmems_mod_glo_phy_my_0.083deg_P1D-m_202311
+
+Source:
+MERCATOR GLORYS12V1
+
+Institution:
+MERCATOR OCEAN
+
+File:
+cmems_mod_glo_phy_my_0.083deg_P1D-m_1787938195229.nc
+
+File format:
+NetCDF
+
+CF Conventions:
+CF-1.11
+
+
+========================================
+SPATIAL COVERAGE
+========================================
+
+Region:
+Bay of Bengal
+
+Latitude:
+5.0°N to 22.0°N
+
+Number of latitude points:
+205
+
+Longitude:
+78.0°E to 99.92°E
+
+Number of longitude points:
+264
+
+
+========================================
+VERTICAL COVERAGE
+========================================
+
+Requested depth range:
+0–500 m
+
+Actual deepest included GLORYS level:
+453.9 m
+
+Number of depth levels:
+31
+
+Note:
+There is no GLORYS level exactly at 500 m in this
+subset. The deepest available level within the
+requested 0–500 m range is 453.9 m.
+
+
+========================================
+TEMPORAL COVERAGE
+========================================
+
+Start:
+2024-01-01
+
+End:
+2024-01-15
+
+Temporal resolution:
+Daily
+
+Number of time steps:
+15
+
+
+========================================
+DIMENSIONS
+========================================
+
+time:
+15
+
+depth:
+31
+
+latitude:
+205
+
+longitude:
+264
+
+Variable dimension order:
+(time, depth, latitude, longitude)
+
+
+========================================
+VARIABLES
+========================================
+
+1. thetao
+
+Name:
+Sea water potential temperature
+
+Long name:
+Temperature
+
+Standard name:
+sea_water_potential_temperature
+
+Units:
+degrees_C
+
+Unit description:
+Degrees Celsius
+
+
+2. so
+
+Name:
+Sea water salinity
+
+Long name:
+Salinity
+
+Standard name:
+sea_water_salinity
+
+Units:
+1e-3
+
+Unit description:
+Practical Salinity Unit
+
+
+3. uo
+
+Name:
+Eastward sea water velocity
+
+Long name:
+Eastward velocity
+
+Standard name:
+eastward_sea_water_velocity
+
+Units:
+m s-1
+
+Unit description:
+Meters per second
+
+
+4. vo
+
+Name:
+Northward sea water velocity
+
+Long name:
+Northward velocity
+
+Standard name:
+northward_sea_water_velocity
+
+Units:
+m s-1
+
+Unit description:
+Meters per second
+
+
+========================================
+VARIABLE STRUCTURE
+========================================
+
+thetao:
+(time, depth, latitude, longitude)
+
+so:
+(time, depth, latitude, longitude)
+
+uo:
+(time, depth, latitude, longitude)
+
+vo:
+(time, depth, latitude, longitude)
+
+
+========================================
+DATASET PURPOSE
+========================================
+
+This dataset is used for the Research/Historical
+Mode of the ocean model evaluation system.
+
+Model:
+GLORYS12V1
+
+Observation dataset:
+Argo Delayed Mode
+
+Comparison region:
+5–22°N, 78–100°E
+
+Comparison depth:
+0–500 m
+
+Comparison period:
+2024-01-01 to 2024-01-15
+
+
+========================================
+FILE INFORMATION
+========================================
+
+Approximate file size:
+403 MB
+
+File contains:
+- Temperature
+- Salinity
+- Eastward velocity
+- Northward velocity
+- Time
+- Depth
+- Latitude
+- Longitude
+
+
+========================================
+IMPORTANT NOTE
+========================================
+
+The GLORYS dataset is a regular gridded ocean
+dataset.
+
+Argo observations must NOT be prematurely converted
+to the GLORYS grid.
+
+Argo should retain its original:
+- measurement locations
+- pressure/depth levels
+- timestamps
+- temperature
+- salinity
+- float/platform ID
+- quality-control flags
+
+Model-observation collocation/interpolation should
+be performed later during the comparison stage.
