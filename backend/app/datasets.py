@@ -503,7 +503,7 @@ def query_argo_stations(
                 "latitude": round(float(lats[idx]), 4),
                 "longitude": round(float(lons[idx]), 4),
                 "timestamp": pd.Timestamp(times[idx]).isoformat(),
-                "max_depth": round(float(pressures[idx]), 2),
+                "depth": round(float(pressures[idx]), 2),
                 "status": "active",
                 "type": "argo",
                 "temperature": None,
@@ -511,8 +511,8 @@ def query_argo_stations(
             }
 
         # Update max depth
-        if float(pressures[idx]) > stations[key]["max_depth"]:
-            stations[key]["max_depth"] = round(float(pressures[idx]), 2)
+        if float(pressures[idx]) > stations[key]["depth"]:
+            stations[key]["depth"] = round(float(pressures[idx]), 2)
 
         # Keep shallowest valid temperature/salinity
         if stations[key]["temperature"] is None:
