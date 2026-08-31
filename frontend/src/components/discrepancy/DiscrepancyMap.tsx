@@ -1,15 +1,39 @@
-import { useState } from 'react';
-import { mockDiscrepancyData } from '@/mocks/comparison';
+import { useState, useEffect } from 'react';
+import { useOceanStore } from '@/state/oceanStore';
+import { getProvider } from '@/integration';
+import { regions } from '@/config/regions';
+import type { DiscrepancyData } from '@/types/diagnostics';
 
 export function DiscrepancyMap() {
+  const { selectedVariable, selectedRegion, selectedDate, selectedTime } = useOceanStore();
   const [selectedVar, setSelectedVar] = useState<'all' | 'temperature' | 'salinity'>('all');
+  const [allData, setAllData] = useState<DiscrepancyData[]>([]);
+
+  // Fetch real discrepancy data from the API
+  useEffect(() => {
+    const provider = getProvider();
+    const region = regions.find(r => r.id === selectedRegion);
+    if (!region) return;
+
+    provider.fetchDiscrepancy({
+      region: selectedRegion,
+      bounds: region.bounds,
+      variable: selectedVariable,
+      date: selectedDate,
+      time: selectedTime,
+    }).then(response => {
+      if (response.status === 'success' && response.data) {
+        setAllData(response.data.points as DiscrepancyData[]);
+      }
+    }).catch(() => setAllData([]));
+  }, [selectedRegion, selectedVariable, selectedDate, selectedTime]);
 
   const filteredData =
     selectedVar === 'all'
-      ? mockDiscrepancyData
-      : mockDiscrepancyData.filter((d) => d.variable === selectedVar);
+      ? allData
+      : allData.filter((d) => d.variable === selectedVar);
 
-  const maxError = Math.max(...filteredData.map((d) => Math.abs(d.errorMagnitude)));
+  const maxError = filteredData.length > 0 ? Math.max(...filteredData.map((d) => Math.abs(d.errorMagnitude))) : 1;
 
   const getErrorColor = (magnitude: number) => {
     const normalized = magnitude / maxError;
@@ -67,7 +91,7 @@ export function DiscrepancyMap() {
         </div>
 
         <p className="mt-2 text-center text-[10px] text-slate-500">
-          Mock discrepancy data — Backend pending
+          Real API discrepancy data
         </p>
       </div>
     </div>

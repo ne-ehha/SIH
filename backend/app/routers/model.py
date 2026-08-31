@@ -86,8 +86,16 @@ def visualization_3d(req: VisualizationRequest):
             f"{HYCOM_LON_RANGE[0]}–{HYCOM_LON_RANGE[1]}°E).",
         )
 
-    # Find time index
-    time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    # Find time index (may fail if HYCOM dataset is unavailable)
+    try:
+        time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    except FileNotFoundError:
+        return _error(
+            "DATASET_UNAVAILABLE",
+            "HYCOM model dataset is not available on this server. "
+            "Pipeline B (model exploration) requires the INCOIS HYCOM 2.35 file.",
+        )
+
     if time_idx is None:
         return _error(
             "INVALID_DATE",
@@ -97,20 +105,32 @@ def visualization_3d(req: VisualizationRequest):
         )
 
     unit = VAR_UNITS.get(req.variable, "")
-    lat_idx, lon_idx = find_nearest_hycom_indices(
-        req.location.latitude, req.location.longitude
-    )
+    try:
+        lat_idx, lon_idx = find_nearest_hycom_indices(
+            req.location.latitude, req.location.longitude
+        )
+    except FileNotFoundError:
+        return _error(
+            "DATASET_UNAVAILABLE",
+            "HYCOM model dataset is not available on this server.",
+        )
 
     # Build depth slices with 8×8 grid at each depth
     depth_slices = []
     for d_idx, depth in enumerate(HYCOM_DEPTH_LEVELS):
-        grid_points = get_hycom_grid_around(
-            variable=req.variable,
-            latitude=req.location.latitude,
-            longitude=req.location.longitude,
-            time_idx=time_idx,
-            depth_idx=d_idx,
-        )
+        try:
+            grid_points = get_hycom_grid_around(
+                variable=req.variable,
+                latitude=req.location.latitude,
+                longitude=req.location.longitude,
+                time_idx=time_idx,
+                depth_idx=d_idx,
+            )
+        except FileNotFoundError:
+            return _error(
+                "DATASET_UNAVAILABLE",
+                "HYCOM model dataset is not available on this server.",
+            )
 
         # Compute mean of non-null values
         valid_values = [p["value"] for p in grid_points if p["value"] is not None]
@@ -124,12 +144,18 @@ def visualization_3d(req: VisualizationRequest):
         })
 
     # Build vertical profile (model-only)
-    profile_points = get_hycom_vertical_profile(
-        variable=req.variable,
-        lat_idx=lat_idx,
-        lon_idx=lon_idx,
-        time_idx=time_idx,
-    )
+    try:
+        profile_points = get_hycom_vertical_profile(
+            variable=req.variable,
+            lat_idx=lat_idx,
+            lon_idx=lon_idx,
+            time_idx=time_idx,
+        )
+    except FileNotFoundError:
+        return _error(
+            "DATASET_UNAVAILABLE",
+            "HYCOM model dataset is not available on this server.",
+        )
 
     # For currents, omit observationValue from profile points
     is_currents = req.variable in ("currents_u", "currents_v")
@@ -188,20 +214,30 @@ def model_profile(req: ModelProfileRequest):
     if not is_in_hycom_coverage(req.location.latitude, req.location.longitude):
         return _error("OUTSIDE_COVERAGE", "Coordinate outside HYCOM coverage.")
 
-    time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    try:
+        time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    except FileNotFoundError:
+        return _error("DATASET_UNAVAILABLE", "HYCOM model dataset is not available on this server.")
+
     if time_idx is None:
         return _error("INVALID_DATE", "Date/time outside HYCOM coverage.")
 
-    lat_idx, lon_idx = find_nearest_hycom_indices(
-        req.location.latitude, req.location.longitude
-    )
+    try:
+        lat_idx, lon_idx = find_nearest_hycom_indices(
+            req.location.latitude, req.location.longitude
+        )
+    except FileNotFoundError:
+        return _error("DATASET_UNAVAILABLE", "HYCOM model dataset is not available on this server.")
 
-    profile_points = get_hycom_vertical_profile(
-        variable=req.variable,
-        lat_idx=lat_idx,
-        lon_idx=lon_idx,
-        time_idx=time_idx,
-    )
+    try:
+        profile_points = get_hycom_vertical_profile(
+            variable=req.variable,
+            lat_idx=lat_idx,
+            lon_idx=lon_idx,
+            time_idx=time_idx,
+        )
+    except FileNotFoundError:
+        return _error("DATASET_UNAVAILABLE", "HYCOM model dataset is not available on this server.")
 
     if not profile_points:
         return _error("NO_MODEL_DATA", "No model data at this location (likely land).")
@@ -256,7 +292,11 @@ def model_grid(req: ModelGridRequest):
             f"HYCOM depth levels: {', '.join(str(d) for d in HYCOM_DEPTH_LEVELS)}m.",
         )
 
-    time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    try:
+        time_idx = find_nearest_hycom_time_index(req.date, req.time)
+    except FileNotFoundError:
+        return _error("DATASET_UNAVAILABLE", "HYCOM model dataset is not available on this server.")
+
     if time_idx is None:
         return _error("INVALID_DATE", "Date/time outside HYCOM coverage.")
 
@@ -264,7 +304,10 @@ def model_grid(req: ModelGridRequest):
     if depth_idx is None:
         return _error("UNSUPPORTED_DEPTH", "Depth outside HYCOM range.")
 
-    ds = get_hycom()
+    try:
+        ds = get_hycom()
+    except FileNotFoundError:
+        return _error("DATASET_UNAVAILABLE", "HYCOM model dataset is not available on this server.")
     nc_var = HYCOM_VAR_MAP.get(req.variable)
     unit = VAR_UNITS.get(req.variable, "")
 

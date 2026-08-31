@@ -17,6 +17,9 @@ import { useOceanStore } from '@/state/oceanStore';
 function App() {
   const { activeView, isModelViewOpen } = useOceanStore();
 
+  // Pipeline A views: comparison/profile/discrepancy/diagnostics use GLORYS×Argo (Jan 2024)
+  const isPipelineAView = activeView === 'compare' || activeView === 'discrepancies' || activeView === 'diagnostics' || activeView === 'solutions' || activeView === 'reports';
+
   return (
     <DashboardLayout>
       <div className="flex h-full">
@@ -30,7 +33,7 @@ function App() {
           {/* Right panel overlay on globe */}
           <div className="absolute right-4 top-4 bottom-4 w-72 space-y-4 overflow-y-auto z-10">
             <SelectedLocationPanel />
-            <ModelHealthCard />
+            {isPipelineAView && <ModelHealthCard />}
           </div>
         </div>
 
@@ -39,9 +42,14 @@ function App() {
           <div className="p-4">
             {/* View-specific content */}
             {activeView === 'explore' && (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <ModelObservationComparison />
-                <VerticalProfile />
+              <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4">
+                <h3 className="text-sm font-semibold text-white">HYCOM Model Exploration</h3>
+                <p className="mt-2 text-xs text-slate-400">
+                  Exploring INCOIS HYCOM 2.35 model data. Select a location and open 3D view to visualize model fields.
+                </p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Pipeline B — Model-only data. Use Compare for GLORYS×Argo model-observation comparison.
+                </p>
               </div>
             )}
 
@@ -75,10 +83,7 @@ function App() {
               </div>
             )}
 
-            {/* Workflow always visible */}
-            <div className="mt-4">
-              <InvestigationWorkflow />
-            </div>
+
           </div>
         </div>
       </div>

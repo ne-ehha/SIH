@@ -45,7 +45,7 @@ export function ModelObservationComparison() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Model vs Observation</h3>
-        <span className="text-[10px] text-slate-500">Mock data — Backend pending</span>
+        <span className="text-[10px] text-slate-500">Real API data</span>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

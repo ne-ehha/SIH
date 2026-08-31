@@ -12,17 +12,21 @@
 
 import type { OceanDataProvider } from './provider';
 import { MockOceanDataProvider } from './providers/MockOceanDataProvider';
+import { ApiOceanDataProvider } from './providers/ApiOceanDataProvider';
 
 // ── Provider instances (singletons) ─────────────────────────────────────────
 
 const providers: Record<string, OceanDataProvider> = {
   mock: new MockOceanDataProvider(),
-  // api: new ApiOceanDataProvider(),  // Ayan implements this
+  api: new ApiOceanDataProvider(),
 };
 
 // ── Active provider ─────────────────────────────────────────────────────────
 
-let activeProviderKey: string = 'mock';
+// Auto-select the API provider when VITE_API_BASE_URL is configured.
+// Fall back to mock if no backend URL is set.
+const hasApiUrl = !!(import.meta.env.VITE_API_BASE_URL);
+let activeProviderKey: string = hasApiUrl ? 'api' : 'mock';
 
 /**
  * Get the currently active data provider.
