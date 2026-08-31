@@ -44,7 +44,7 @@ export function SolutionsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Solutions & Recommendations</h3>
-        <span className="text-[10px] text-slate-500">Mock data — Backend pending</span>
+        <span className="text-[10px] text-slate-500">Real API data</span>
       </div>
 
       <div className="rounded-xl border border-purple-800/50 bg-purple-900/20 p-5">

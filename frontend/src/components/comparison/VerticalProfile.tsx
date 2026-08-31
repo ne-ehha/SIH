@@ -60,7 +60,7 @@ export function VerticalProfile() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">Vertical Profile</h3>
-        <span className="text-[10px] text-slate-500">Mock data — Backend pending</span>
+        <span className="text-[10px] text-slate-500">Real API data</span>
       </div>
 
       <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/30 p-4">

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { useOceanStore } from '@/state/oceanStore';
 import { regions } from '@/config/regions';
-import { mockObservations } from '@/mocks/observations';
+import { fetchObservations } from '@/services/observationService';
+import type { ObservationPoint } from '@/types/observation';
 
 // Configure Cesium Ion access token from environment
 const cesiumIonToken = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN as string | undefined;
@@ -17,6 +18,14 @@ export function OceanGlobe() {
   const markersRef = useRef<Cesium.Entity[]>([]);
 
   const { setSelectedLocation, selectedLocation, selectedRegion, setSelectedObservationId } = useOceanStore();
+  const [observations, setObservations] = useState<ObservationPoint[]>([]);
+
+  // Fetch real observation data from the API
+  useEffect(() => {
+    fetchObservations(selectedRegion)
+      .then(setObservations)
+      .catch(() => setObservations([]));
+  }, [selectedRegion]);
 
   const handleCoordinateClick = useCallback(
     (position: Cesium.Cartesian3) => {
@@ -78,20 +87,17 @@ export function OceanGlobe() {
       duration: 0,
     });
 
-    // Click handler
+    // Click handler — use pickEllipsoid for reliable coordinate picking
+    // (globe.pick depends on terrain tile loading and can return null)
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction(
       (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-        const ray = viewer.camera.getPickRay(movement.position);
-        if (ray) {
-          const globe = viewer.scene.globe;
-          const cartesian = globe.pick(ray, viewer.scene);
-          if (cartesian) {
-            // Check if clicked on ocean (not land)
-            const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-            // For now, allow all clicks
-            handleCoordinateClick(cartesian);
-          }
+        const cartesian = viewer.camera.pickEllipsoid(
+          movement.position,
+          viewer.scene.globe.ellipsoid
+        );
+        if (cartesian) {
+          handleCoordinateClick(cartesian);
         }
       },
       Cesium.ScreenSpaceEventType.LEFT_CLICK
@@ -138,8 +144,8 @@ export function OceanGlobe() {
     markersRef.current.forEach((entity) => viewer.entities.remove(entity));
     markersRef.current = [];
 
-    // Add observation points
-    mockObservations.forEach((obs) => {
+    // Add observation points from real API data
+    observations.forEach((obs) => {
       const color =
         obs.status === 'active'
           ? Cesium.Color.CYAN
@@ -186,7 +192,7 @@ export function OceanGlobe() {
           const obsId = picked.id.properties.observationId?.getValue();
           if (obsId) {
             setSelectedObservationId(obsId);
-            const obs = mockObservations.find((o) => o.id === obsId);
+            const obs = observations.find((o) => o.id === obsId);
             if (obs) {
               setSelectedLocation({ latitude: obs.latitude, longitude: obs.longitude });
             }
@@ -199,7 +205,7 @@ export function OceanGlobe() {
     return () => {
       handler.destroy();
     };
-  }, [setSelectedLocation, setSelectedObservationId]);
+  }, [setSelectedLocation, setSelectedObservationId, observations]);
 
   // Show selected coordinate marker
   useEffect(() => {

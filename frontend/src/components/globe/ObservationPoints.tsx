@@ -1,8 +1,19 @@
+import { useState, useEffect } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
-import { mockObservations } from '@/mocks/observations';
+import { fetchObservations } from '@/services/observationService';
+import type { ObservationPoint } from '@/types/observation';
 
 export function ObservationPoints() {
-  const { selectedObservationId } = useOceanStore();
+  const { selectedObservationId, selectedRegion } = useOceanStore();
+  const [observations, setObservations] = useState<ObservationPoint[]>([]);
+
+  useEffect(() => {
+    fetchObservations(selectedRegion)
+      .then(setObservations)
+      .catch(() => setObservations([]));
+  }, [selectedRegion]);
+
+  const activeObs = observations.filter(o => o.status === 'active').slice(0, 5);
 
   return (
     <div className="pointer-events-none absolute right-4 top-4 z-10">
@@ -11,7 +22,7 @@ export function ObservationPoints() {
           Observations
         </h4>
         <div className="space-y-1">
-          {mockObservations.filter(o => o.status === 'active').slice(0, 5).map((obs) => (
+          {activeObs.map((obs) => (
             <div
               key={obs.id}
               className={`flex items-center gap-2 rounded px-1.5 py-0.5 text-[10px] ${
