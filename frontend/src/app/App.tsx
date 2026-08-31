@@ -11,11 +11,17 @@ import { DiscrepancyMap } from '@/components/discrepancy/DiscrepancyMap';
 import { DiagnosticPanel } from '@/components/diagnostics/DiagnosticPanel';
 import { InvestigationWorkflow } from '@/components/workflow/InvestigationWorkflow';
 import { Ocean3DView } from '@/components/visualization/Ocean3DView';
+import { Research3DView } from '@/components/visualization/Research3DView';
 import { SolutionsPanel } from '@/components/diagnostics/SolutionsPanel';
 import { useOceanStore } from '@/state/oceanStore';
 
+// HYCOM operational date range
+const HYCOM_DATE_START = '2026-08-26';
+const HYCOM_DATE_END = '2026-09-01';
+
 function App() {
-  const { activeView, isModelViewOpen } = useOceanStore();
+  const { activeView, isModelViewOpen, selectedDate } = useOceanStore();
+  const isHycom = selectedDate >= HYCOM_DATE_START && selectedDate <= HYCOM_DATE_END;
 
   // Pipeline A views: comparison/profile/discrepancy/diagnostics use GLORYS×Argo (Jan 2024)
   const isPipelineAView = activeView === 'compare' || activeView === 'discrepancies' || activeView === 'diagnostics' || activeView === 'solutions' || activeView === 'reports';
@@ -88,8 +94,9 @@ function App() {
         </div>
       </div>
 
-      {/* 3D Model View Modal */}
-      {isModelViewOpen && <Ocean3DView />}
+      {/* 3D Visualization Modal — routes to correct pipeline */}
+      {isModelViewOpen && isHycom && <Ocean3DView />}
+      {isModelViewOpen && !isHycom && <Research3DView />}
     </DashboardLayout>
   );
 }

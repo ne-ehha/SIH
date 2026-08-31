@@ -59,6 +59,12 @@ export interface ModelObservationDataPoint {
 export interface ModelComparisonResult {
   /** Single point comparison at the selected depth */
   point: ModelObservationDataPoint;
+  /** Actual latitude of the matched observation (may differ from requested click) */
+  observationLatitude?: number;
+  /** Actual longitude of the matched observation (may differ from requested click) */
+  observationLongitude?: number;
+  /** Great-circle distance from requested point to matched observation in km */
+  nearestDistance?: number;
   /** Health score 0-100 */
   healthScore: number;
   healthStatus: 'excellent' | 'good' | 'fair' | 'poor';
@@ -85,6 +91,12 @@ export interface VerticalProfileResult {
   unit: string;
   /** Max depth available for this variable at this location */
   maxDepth: number;
+  /** Actual latitude of the matched observation */
+  observationLatitude?: number;
+  /** Actual longitude of the matched observation */
+  observationLongitude?: number;
+  /** Great-circle distance from requested point to matched observation in km */
+  nearestDistance?: number;
 }
 
 // ── Discrepancy / error map ────────────────────────────────────────────────────
@@ -244,4 +256,45 @@ export interface VisualizationRequest {
   variable: OceanVariable;
   date: string;
   time: string;
+}
+
+// ── Research 3D Visualization (GLORYS × Argo collocation) ───────────────────
+
+export interface Research3DPoint {
+  latitude: number;
+  longitude: number;
+  pressure: number;
+  argoValue: number;
+  glorysValue: number;
+  difference: number;
+  timestamp: string;
+  platformNumber: string;
+  cycleNumber: string;
+}
+
+export interface Research3DStats {
+  totalPoints: number;
+  argoMean: number;
+  glorysMean: number;
+  meanDifference: number;
+  rmsDifference: number;
+  maxDifference: number;
+  depthRange: [number, number];
+  spatialBounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  };
+}
+
+export interface ResearchVisualization3DResult {
+  variable: OceanVariable;
+  unit: string;
+  date: string;
+  time: string;
+  sourceModel: string;
+  sourceObservation: string;
+  points: Research3DPoint[];
+  stats: Research3DStats;
 }

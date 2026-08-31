@@ -4,6 +4,14 @@ import { variables } from '@/config/variables';
 import { regions } from '@/config/regions';
 import { Button } from '@/components/common/Button';
 
+// HYCOM operational date range — 3D visualization is only available for these dates
+const HYCOM_DATE_START = '2026-08-26';
+const HYCOM_DATE_END = '2026-09-01';
+
+function isHycomDate(date: string): boolean {
+  return date >= HYCOM_DATE_START && date <= HYCOM_DATE_END;
+}
+
 export function SelectedLocationPanel() {
   const {
     selectedLocation,
@@ -20,6 +28,7 @@ export function SelectedLocationPanel() {
   const regionInfo = regions.find((r) => r.id === selectedRegion);
 
   const hasSelection = selectedLocation !== null;
+  const isHycom = isHycomDate(selectedDate);
 
   return (
     <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4 shadow-xl backdrop-blur-md">
@@ -64,8 +73,17 @@ export function SelectedLocationPanel() {
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
-          View 3D Model
+          {isHycom ? 'View 3D Model' : 'View Research 3D'}
         </Button>
+        {isHycom ? (
+          <p className="mt-1.5 text-center text-[9px] text-slate-600">
+            HYCOM operational visualization (Aug 26 - Sep 1, 2026)
+          </p>
+        ) : (
+          <p className="mt-1.5 text-center text-[9px] text-slate-600">
+            GLORYS × Argo collocated observations
+          </p>
+        )}
       </div>
     </div>
   );

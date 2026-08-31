@@ -34,6 +34,7 @@ import type {
   WorkflowResult,
   VisualizationRequest,
   Visualization3DResult,
+  ResearchVisualization3DResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -160,6 +161,9 @@ interface BackendComparisonData {
     confidence: string;
     timestamp: string;
   };
+  observationLatitude?: number;
+  observationLongitude?: number;
+  nearestDistance?: number;
   healthScore: number;
   healthStatus: string;
   healthSummary: string;
@@ -177,6 +181,9 @@ interface BackendProfileData {
   variable: string;
   unit: string;
   maxDepth: number;
+  observationLatitude?: number;
+  observationLongitude?: number;
+  nearestDistance?: number;
   sourceModel: string;
   sourceObservation?: string | null;
 }
@@ -296,6 +303,41 @@ interface BackendModelGridData {
   }>;
 }
 
+interface BackendResearchVisualizationData {
+  variable: string;
+  unit: string;
+  date: string;
+  time: string;
+  sourceModel: string;
+  sourceObservation: string;
+  points: Array<{
+    latitude: number;
+    longitude: number;
+    pressure: number;
+    argoValue: number;
+    glorysValue: number;
+    difference: number;
+    timestamp: string;
+    platformNumber: string;
+    cycleNumber: string;
+  }>;
+  stats: {
+    totalPoints: number;
+    argoMean: number;
+    glorysMean: number;
+    meanDifference: number;
+    rmsDifference: number;
+    maxDifference: number;
+    depthRange: [number, number];
+    spatialBounds: {
+      north: number;
+      south: number;
+      east: number;
+      west: number;
+    };
+  };
+}
+
 // ── Provider implementation ───────────────────────────────────────────────────
 
 export class ApiOceanDataProvider implements OceanDataProvider {
@@ -344,6 +386,9 @@ export class ApiOceanDataProvider implements OceanDataProvider {
         confidence: d.point.confidence as ModelComparisonResult['point']['confidence'],
         timestamp: d.point.timestamp,
       },
+      observationLatitude: d.observationLatitude,
+      observationLongitude: d.observationLongitude,
+      nearestDistance: d.nearestDistance,
       healthScore: d.healthScore,
       healthStatus: d.healthStatus as ModelComparisonResult['healthStatus'],
       healthSummary: d.healthSummary,
@@ -398,6 +443,9 @@ export class ApiOceanDataProvider implements OceanDataProvider {
       variable: d.variable as VerticalProfileResult['variable'],
       unit: d.unit,
       maxDepth: d.maxDepth,
+      observationLatitude: d.observationLatitude,
+      observationLongitude: d.observationLongitude,
+      nearestDistance: d.nearestDistance,
     };
 
     return {
@@ -677,5 +725,61 @@ export class ApiOceanDataProvider implements OceanDataProvider {
       value: gp.value ?? null,
       unit: gp.unit,
     }));
+  }
+
+  // ── Research: 3D Visualization (GLORYS × Argo collocation) ─────────────────
+
+  async fetchResearchVisualization(req: VisualizationRequest): Promise<ProviderResponse<ResearchVisualization3DResult>> {
+    // Only Pipeline A dates are valid for Research visualization
+    if (!isPipelineADate(req.date)) {
+      return {
+        status: 'error',
+        data: null,
+        error: `Date ${req.date} is not available for Research visualization. Available dates: January 1-14, 2024 only (GLORYS×Argo).`,
+        metadata: { timestamp: new Date().toISOString(), source: 'api' },
+      };
+    }
+
+    const backend = await apiPost<BackendResearchVisualizationData>('/api/v1/research/visualization/3d', {
+      location: {
+        latitude: req.location.latitude,
+        longitude: req.location.longitude,
+      },
+      variable: req.variable,
+      date: req.date,
+      time: req.time,
+    });
+
+    if (backend.status === 'error') {
+      return toProviderResponse(backend);
+    }
+
+    const d = backend.data;
+    const result: ResearchVisualization3DResult = {
+      variable: d.variable as ResearchVisualization3DResult['variable'],
+      unit: d.unit,
+      date: d.date,
+      time: d.time,
+      sourceModel: d.sourceModel,
+      sourceObservation: d.sourceObservation,
+      points: d.points.map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        pressure: p.pressure,
+        argoValue: p.argoValue,
+        glorysValue: p.glorysValue,
+        difference: p.difference,
+        timestamp: p.timestamp,
+        platformNumber: p.platformNumber,
+        cycleNumber: p.cycleNumber,
+      })),
+      stats: d.stats,
+    };
+
+    return {
+      status: 'success',
+      data: result,
+      metadata: { timestamp: new Date().toISOString(), source: 'api' },
+    };
   }
 }

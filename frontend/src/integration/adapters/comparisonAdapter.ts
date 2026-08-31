@@ -22,6 +22,11 @@ export interface ComparisonDisplayData {
   difference: number;
   unit: string;
   variable: string;
+  observationLatitude?: number;
+  observationLongitude?: number;
+  nearestDistance?: number;
+  sourceModel?: string;
+  sourceObservation?: string;
 }
 
 // ── Shape expected by ModelHealthCard ─────────────────────────────────────────
@@ -60,6 +65,11 @@ export function adaptComparison(
     difference: point.difference,
     unit: point.unit,
     variable: point.variable,
+    observationLatitude: response.data.observationLatitude,
+    observationLongitude: response.data.observationLongitude,
+    nearestDistance: response.data.nearestDistance,
+    sourceModel: response.data.sourceModel,
+    sourceObservation: response.data.sourceObservation,
   };
 }
 
