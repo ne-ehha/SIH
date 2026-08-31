@@ -8,6 +8,7 @@
  * sparse, irregularly spaced GLORYS × Argo collocated observations.
  */
 
+import { useState } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D } from '@/integration';
 import { LoadingState } from '@/components/common/LoadingState';
@@ -15,6 +16,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import type { Research3DPoint } from '@/integration';
 
 export function Research3DView() {
+  const [selectedPoint, setSelectedPoint] = useState<Research3DPoint | null>(null);
   const {
     selectedLocation,
     selectedVariable,
@@ -144,6 +146,11 @@ export function Research3DView() {
               )}
               {!loading && !error && points.length > 0 && (
                 <div className="space-y-8">
+                  {/* Selected observation detail panel */}
+                  {selectedPoint && (
+                    <SelectedPointDetail point={selectedPoint} unit={unit} onClose={() => setSelectedPoint(null)} />
+                  )}
+
                   {/* Scatter plot: Longitude vs Depth */}
                   <ScatterPlot
                     points={points}
@@ -152,6 +159,8 @@ export function Research3DView() {
                     title="Longitude vs Depth"
                     xAxis="longitude"
                     yAxis="pressure"
+                    onSelectPoint={setSelectedPoint}
+                    selectedPoint={selectedPoint}
                   />
 
                   {/* Scatter plot: Latitude vs Depth */}
@@ -162,13 +171,15 @@ export function Research3DView() {
                     title="Latitude vs Depth"
                     xAxis="latitude"
                     yAxis="pressure"
+                    onSelectPoint={setSelectedPoint}
+                    selectedPoint={selectedPoint}
                   />
 
                   {/* Comparison chart: Argo vs GLORYS at each depth */}
                   <ComparisonChart points={points} unit={unit} variable={selectedVariable} />
 
                   {/* Observation table (first 20) */}
-                  <ObservationTable points={points.slice(0, 20)} unit={unit} variable={selectedVariable} />
+                  <ObservationTable points={points.slice(0, 20)} unit={unit} variable={selectedVariable} onSelectPoint={setSelectedPoint} />
                   {points.length > 20 && (
                     <p className="text-[10px] text-slate-600 text-center">
                       Showing 20 of {points.length} observations
@@ -195,6 +206,27 @@ function Row({ label, value, color }: { label: string; value: string; color?: st
   );
 }
 
+function SelectedPointDetail({ point, unit, onClose }: { point: Research3DPoint; unit: string; onClose: () => void }) {
+  return (
+    <div className="rounded-lg border border-cyan-800/50 bg-cyan-900/20 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-cyan-300">Selected Observation</h3>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-xs">Close</button>
+      </div>
+      <div className="grid grid-cols-4 gap-3 text-[11px]">
+        <div><span className="text-slate-500">Latitude</span><p className="text-white">{point.latitude.toFixed(4)}°N</p></div>
+        <div><span className="text-slate-500">Longitude</span><p className="text-white">{point.longitude.toFixed(4)}°E</p></div>
+        <div><span className="text-slate-500">Depth</span><p className="text-white">{point.pressure.toFixed(1)} dbar</p></div>
+        <div><span className="text-slate-500">Timestamp</span><p className="text-white">{point.timestamp}</p></div>
+        <div><span className="text-slate-500">Argo</span><p className="text-purple-300">{point.argoValue.toFixed(2)} {unit}</p></div>
+        <div><span className="text-slate-500">GLORYS</span><p className="text-cyan-300">{point.glorysValue.toFixed(2)} {unit}</p></div>
+        <div><span className="text-slate-500">Difference</span><p className={point.difference >= 0 ? 'text-amber-300' : 'text-blue-300'}>{point.difference > 0 ? '+' : ''}{point.difference.toFixed(4)} {unit}</p></div>
+        <div><span className="text-slate-500">Platform</span><p className="text-white">{point.platformNumber} / Cycle {point.cycleNumber}</p></div>
+      </div>
+    </div>
+  );
+}
+
 function ScatterPlot({
   points,
   unit,
@@ -202,6 +234,8 @@ function ScatterPlot({
   title,
   xAxis,
   yAxis,
+  onSelectPoint,
+  selectedPoint,
 }: {
   points: Research3DPoint[];
   unit: string;
@@ -209,6 +243,8 @@ function ScatterPlot({
   title: string;
   xAxis: 'longitude' | 'latitude';
   yAxis: 'pressure';
+  onSelectPoint?: (point: Research3DPoint) => void;
+  selectedPoint?: Research3DPoint | null;
 }) {
   const xValues = points.map((p) => p[xAxis]);
   const yValues = points.map((p) => p[yAxis]);
@@ -288,18 +324,25 @@ function ScatterPlot({
           </text>
 
           {/* Data points */}
-          {points.map((p, i) => (
-            <circle
-              key={i}
-              cx={toX(p[xAxis])}
-              cy={toY(p[yAxis])}
-              r={3}
-              fill={getColor(p.argoValue)}
-              opacity={0.8}
-            >
-              <title>{`${xAxis}: ${p[xAxis].toFixed(2)}\nDepth: ${p[yAxis].toFixed(1)} dbar\nArgo: ${p.argoValue.toFixed(2)} ${unit}\nGLORYS: ${p.glorysValue.toFixed(2)} ${unit}\nDiff: ${p.difference > 0 ? '+' : ''}${p.difference.toFixed(4)} ${unit}`}</title>
-            </circle>
-          ))}
+          {points.map((p, i) => {
+            const isSelected = selectedPoint && selectedPoint.latitude === p.latitude && selectedPoint.longitude === p.longitude && selectedPoint.pressure === p.pressure;
+            return (
+              <circle
+                key={i}
+                cx={toX(p[xAxis])}
+                cy={toY(p[yAxis])}
+                r={isSelected ? 5 : 3}
+                fill={isSelected ? '#ffffff' : getColor(p.argoValue)}
+                stroke={isSelected ? getColor(p.argoValue) : 'none'}
+                strokeWidth={isSelected ? 2 : 0}
+                opacity={0.8}
+                style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}
+                onClick={() => onSelectPoint?.(p)}
+              >
+                <title>{`${xAxis}: ${p[xAxis].toFixed(2)}\nDepth: ${p[yAxis].toFixed(1)} dbar\nArgo: ${p.argoValue.toFixed(2)} ${unit}\nGLORYS: ${p.glorysValue.toFixed(2)} ${unit}\nDiff: ${p.difference > 0 ? '+' : ''}${p.difference.toFixed(4)} ${unit}`}</title>
+              </circle>
+            );
+          })}
 
           {/* Color scale */}
           <defs>
@@ -443,10 +486,12 @@ function ObservationTable({
   points,
   unit,
   variable,
+  onSelectPoint,
 }: {
   points: Research3DPoint[];
   unit: string;
   variable: string;
+  onSelectPoint?: (point: Research3DPoint) => void;
 }) {
   return (
     <div>
@@ -466,7 +511,7 @@ function ObservationTable({
           </thead>
           <tbody>
             {points.map((p, i) => (
-              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30" onClick={() => onSelectPoint?.(p)} style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}>
                 <td className="px-2 py-1 text-slate-300">{p.latitude.toFixed(2)}</td>
                 <td className="px-2 py-1 text-slate-300">{p.longitude.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right text-slate-300">{p.pressure.toFixed(1)}</td>

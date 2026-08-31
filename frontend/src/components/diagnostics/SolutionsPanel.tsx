@@ -17,7 +17,7 @@ export function SolutionsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const result = await getRecommendations('diag-001');
+      const result = await getRecommendations();
       setSolution(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Recommendations unavailable');

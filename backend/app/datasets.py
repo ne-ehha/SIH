@@ -413,34 +413,67 @@ def get_collocation_point(
         return {}
 
 
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two points using the haversine formula."""
+    R = 6371.0  # Earth radius in km
+    lat1_r, lon1_r = np.radians(lat1), np.radians(lon1)
+    lat2_r, lon2_r = np.radians(lat2), np.radians(lon2)
+    dlat = lat2_r - lat1_r
+    dlon = lon2_r - lon1_r
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1_r) * np.cos(lat2_r) * np.sin(dlon / 2) ** 2
+    return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+
 def get_collocation_nearest_point(
     latitude: float,
     longitude: float,
     date: Optional[str] = None,
     variable: str = "temperature",
+    max_distance: float = 0.5,
+    depth: Optional[float] = None,
 ) -> Optional[dict]:
     """
     Find the nearest collocation point to a given coordinate.
-    Returns the point dict or None.
+    Optionally considers depth proximity when depth is provided.
+    Returns the point dict with observationLatitude, observationLongitude,
+    nearestDistance (km) fields added, or None.
     """
     indices = query_collocation(
         variable=variable,
         latitude=latitude,
         longitude=longitude,
         date=date,
+        max_distance=max_distance,
     )
 
     if len(indices) == 0:
         return None
 
-    # Find the closest by distance
+    # Find the closest by combined spatial + depth proximity
     ds = _load_collocation()
     lats = ds["latitude"].values[indices]
     lons = ds["longitude"].values[indices]
-    dists = np.sqrt((lats - latitude) ** 2 + (lons - longitude) ** 2)
-    closest = indices[np.argmin(dists)]
+    pressures = ds["pressure"].values[indices]
+    spatial_dists = np.array([haversine_km(latitude, longitude, float(lats[i]), float(lons[i])) for i in range(len(lats))])
 
-    return get_collocation_point(closest, variable)
+    if depth is not None:
+        # Weighted score: spatial distance (km) + depth penalty (dbar scaled to ~km-equivalent)
+        # 1 dbar ~ 1m, so 100 dbar ~ 0.1 km. We use a weight of 0.01 to make depth comparable.
+        depth_dists = np.abs(np.array([float(pressures[i]) for i in range(len(pressures))]) - depth)
+        combined = spatial_dists + depth_dists * 0.01
+        best_idx = np.argmin(combined)
+    else:
+        best_idx = np.argmin(spatial_dists)
+
+    closest = indices[best_idx]
+    min_dist_km = float(spatial_dists[best_idx])
+
+    point = get_collocation_point(closest, variable)
+    if point:
+        point["observationLatitude"] = point["latitude"]
+        point["observationLongitude"] = point["longitude"]
+        point["nearestDistance"] = round(min_dist_km, 2)
+    return point
 
 
 # ── Argo observation queries ────────────────────────────────────────────────

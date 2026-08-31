@@ -136,12 +136,15 @@ def comparison(req: ComparisonRequest):
             f"coverage ({ARGO_LON_RANGE[0]}–{ARGO_LON_RANGE[1]}°E).",
         )
 
-    # Find nearest collocation point
+    # Find nearest collocation point (max_distance=3.0 for sparse Argo data)
+    # depth param enables depth-aware nearest-neighbor matching
     point = get_collocation_nearest_point(
         latitude=req.location.latitude,
         longitude=req.location.longitude,
         date=req.date,
         variable=req.variable,
+        max_distance=3.0,
+        depth=req.depth,
     )
 
     if point is None:
@@ -182,6 +185,9 @@ def comparison(req: ComparisonRequest):
             "confidence": confidence,
             "timestamp": point["timestamp"],
         },
+        "observationLatitude": point.get("observationLatitude"),
+        "observationLongitude": point.get("observationLongitude"),
+        "nearestDistance": point.get("nearestDistance"),
         "healthScore": health_score,
         "healthStatus": health_status,
         "healthSummary": " ".join(summary_parts),
@@ -216,12 +222,13 @@ def profile(req: ProfileRequest):
             f"Available: {', '.join(ARGO_TEMPORAL_DATES)}",
         )
 
-    # Query collocation at this location and date
+    # Query collocation at this location and date (max_distance=3.0 for sparse Argo data)
     indices = query_collocation(
         variable=req.variable,
         latitude=req.location.latitude,
         longitude=req.location.longitude,
         date=req.date,
+        max_distance=3.0,
     )
 
     if len(indices) == 0:
@@ -260,11 +267,22 @@ def profile(req: ProfileRequest):
 
     max_depth = max(p["depth"] for p in points)
 
+    # Compute nearest observation coordinates and distance
+    from ..datasets import haversine_km
+    lats = ds["latitude"].values[indices]
+    lons = ds["longitude"].values[indices]
+    dists = np.array([haversine_km(req.location.latitude, req.location.longitude,
+                                    float(lats[i]), float(lons[i])) for i in range(len(lats))])
+    nearest_idx = np.argmin(dists)
+
     return _success({
         "points": points,
         "variable": req.variable,
         "unit": unit,
         "maxDepth": max_depth,
+        "observationLatitude": round(float(lats[nearest_idx]), 4),
+        "observationLongitude": round(float(lons[nearest_idx]), 4),
+        "nearestDistance": round(float(dists[nearest_idx]), 2),
         "sourceModel": "GLORYS12V1",
         "sourceObservation": "Argo Delayed Mode",
         "temporalCoverage": "2024-01-01 to 2024-01-14",
