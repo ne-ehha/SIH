@@ -51,7 +51,14 @@ app.add_middleware(
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
-    """Convert Pydantic RequestValidationError into the API's standard error format."""
+    """
+    Convert Pydantic RequestValidationError into the API's standard error format.
+
+    This handler intentionally returns HTTP 422 (not 200) because validation
+    errors indicate malformed client input. The INTEG1 apiClient.ts will
+    receive this as a generic HTTP_ERROR, which is correct behavior for
+    invalid requests that should never reach business logic.
+    """
     errors = []
     for err in exc.errors():
         loc = " → ".join(str(l) for l in err.get("loc", []))
@@ -67,6 +74,30 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": message,
+            },
+            "metadata": {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "api",
+            },
+        },
+    )
+
+
+# ── Global unhandled exception handler ──────────────────────────────────────
+# Catches any exception that escapes endpoint handlers and returns a structured
+# 500 response instead of FastAPI's default HTML error page.
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    tb = traceback.format_exc()
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": f"An unexpected server error occurred: {type(exc).__name__}: {str(exc)}",
             },
             "metadata": {
                 "timestamp": datetime.now(timezone.utc).isoformat(),

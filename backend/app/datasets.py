@@ -375,10 +375,10 @@ def query_collocation(
 def get_collocation_point(
     idx: int,
     variable: str,
-) -> dict:
+) -> Optional[dict]:
     """
     Get a single collocation data point by index.
-    Returns dict with model and observation values.
+    Returns dict with model and observation values, or None on failure.
     """
     ds = _load_collocation()
 
@@ -400,17 +400,25 @@ def get_collocation_point(
         import pandas as pd
         timestamp = pd.Timestamp(time_val).isoformat()
 
-        return {
-            "modelValue": round(model_val, 4),
-            "observationValue": round(obs_val, 4),
-            "difference": round(error_val, 4),
-            "latitude": round(lat, 4),
-            "longitude": round(lon, 4),
-            "pressure": round(pressure, 2),
-            "timestamp": timestamp,
+        # Ensure all values are JSON-serializable native Python types
+        result = {
+            "modelValue": round(float(model_val), 4),
+            "observationValue": round(float(obs_val), 4),
+            "difference": round(float(error_val), 4),
+            "latitude": round(float(lat), 4),
+            "longitude": round(float(lon), 4),
+            "pressure": round(float(pressure), 2),
+            "timestamp": str(timestamp),
         }
-    except (KeyError, IndexError, ValueError):
-        return {}
+
+        # Reject points with NaN values
+        for key in ("modelValue", "observationValue", "difference"):
+            if np.isnan(result[key]):
+                return None
+
+        return result
+    except Exception:
+        return None
 
 
 def get_collocation_nearest_point(
@@ -418,16 +426,28 @@ def get_collocation_nearest_point(
     longitude: float,
     date: Optional[str] = None,
     variable: str = "temperature",
+    depth: Optional[float] = None,
+    depth_tolerance: float = 10.0,
 ) -> Optional[dict]:
     """
     Find the nearest collocation point to a given coordinate.
+    If depth is specified, only match observations within ±depth_tolerance dbar.
     Returns the point dict or None.
     """
+    # Build depth filter bounds if depth is specified
+    depth_min = None
+    depth_max = None
+    if depth is not None:
+        depth_min = max(0.0, depth - depth_tolerance)
+        depth_max = depth + depth_tolerance
+
     indices = query_collocation(
         variable=variable,
         latitude=latitude,
         longitude=longitude,
         date=date,
+        depth_min=depth_min,
+        depth_max=depth_max,
     )
 
     if len(indices) == 0:
@@ -440,7 +460,9 @@ def get_collocation_nearest_point(
     dists = np.sqrt((lats - latitude) ** 2 + (lons - longitude) ** 2)
     closest = indices[np.argmin(dists)]
 
-    return get_collocation_point(closest, variable)
+    result = get_collocation_point(closest, variable)
+    # get_collocation_point returns None on failure — propagate as None
+    return result if result else None
 
 
 # ── Argo observation queries ────────────────────────────────────────────────

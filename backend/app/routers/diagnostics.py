@@ -29,6 +29,10 @@ _diagnostic_store: dict = {}
 
 
 def _error(code: str, message: str):
+    """
+    Standardized application-level error response (HTTP 200 + error body).
+    Preserves INTEG1 apiClient.ts compatibility. See comparison.py._error.
+    """
     return {
         "status": "error",
         "error": {"code": code, "message": message},
