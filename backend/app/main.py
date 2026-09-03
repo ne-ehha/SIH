@@ -77,12 +77,13 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 # Import and register routers
-from .routers import health, comparison, model, diagnostics
+from .routers import health, comparison, model, diagnostics, research
 
 app.include_router(health.router, prefix=API_PREFIX, tags=["health"])
 app.include_router(comparison.router, prefix=API_PREFIX, tags=["comparison"])
 app.include_router(model.router, prefix=API_PREFIX, tags=["model"])
 app.include_router(diagnostics.router, prefix=API_PREFIX, tags=["diagnostics"])
+app.include_router(research.router, prefix=API_PREFIX, tags=["research"])
 
 
 @app.get("/")

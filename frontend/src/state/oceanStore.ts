@@ -52,14 +52,12 @@ const defaultLayers: LayerConfig[] = [
   { id: 'currents', label: 'Currents', enabled: false, category: 'currents' },
 ];
 
-const today = new Date().toISOString().split('T')[0];
-
 export const useOceanStore = create<OceanStore>((set) => ({
   // Initial state
   selectedLocation: null,
   selectedDepth: 0,
   selectedVariable: defaultVariable.id,
-  selectedDate: today,
+  selectedDate: '2024-01-10',
   selectedTime: '12:00',
   selectedRegion: defaultRegion.id,
   activeView: 'explore',
@@ -94,7 +92,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
       selectedLocation: null,
       selectedDepth: 0,
       selectedVariable: defaultVariable.id,
-      selectedDate: today,
+      selectedDate: '2024-01-10',
       selectedTime: '12:00',
       selectedRegion: defaultRegion.id,
       selectedObservationId: null,

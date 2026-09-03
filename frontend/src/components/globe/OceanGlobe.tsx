@@ -5,6 +5,7 @@ import { useOceanStore } from '@/state/oceanStore';
 import { regions } from '@/config/regions';
 import { fetchObservations } from '@/services/observationService';
 import type { ObservationPoint } from '@/types/observation';
+import { RESEARCH_DATA_COVERAGE } from '@/config/researchDataCoverage';
 
 // Configure Cesium Ion access token from environment
 const cesiumIonToken = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN as string | undefined;
@@ -27,14 +28,44 @@ export function OceanGlobe() {
       .catch(() => setObservations([]));
   }, [selectedRegion]);
 
+  // Store observations in a ref so the click handler can access them
+  const observationsRef = useRef<ObservationPoint[]>([]);
+
   const handleCoordinateClick = useCallback(
     (position: Cesium.Cartesian3) => {
       const cartographic = Cesium.Cartographic.fromCartesian(position);
       const lat = Cesium.Math.toDegrees(cartographic.latitude);
       const lng = Cesium.Math.toDegrees(cartographic.longitude);
 
-      if (lat !== undefined && lng !== undefined) {
-        setSelectedLocation({ latitude: lat, longitude: lng });
+      if (lat === undefined || lng === undefined) return;
+
+      // Find the nearest real observation (from API stations or research coverage)
+      const allLocations = [
+        ...observationsRef.current.map(o => ({ lat: o.latitude, lng: o.longitude })),
+        ...RESEARCH_DATA_COVERAGE.map(p => ({ lat: p.latitude, lng: p.longitude })),
+      ];
+
+      let nearestDist = Infinity;
+      let nearestLat = lat;
+      let nearestLng = lng;
+
+      for (const loc of allLocations) {
+        const dist = Math.sqrt((loc.lat - lat) ** 2 + (loc.lng - lng) ** 2);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestLat = loc.lat;
+          nearestLng = loc.lng;
+        }
+      }
+
+      // Snap to nearest observation if within ~200km (~1.8 degrees)
+      const SNAP_THRESHOLD = 1.8;
+      if (nearestDist < SNAP_THRESHOLD) {
+        setSelectedLocation({ latitude: nearestLat, longitude: nearestLng });
+      } else {
+        // No nearby observation — just navigate (no scientific selection)
+        // Don't set selectedLocation to avoid fake observation data
+        console.info(`Click at ${lat.toFixed(2)}, ${lng.toFixed(2)} — no Argo profile within ${SNAP_THRESHOLD.toFixed(1)}°. Use observation markers for scientific data.`);
       }
     },
     [setSelectedLocation]
@@ -87,11 +118,26 @@ export function OceanGlobe() {
       duration: 0,
     });
 
-    // Click handler — use pickEllipsoid for reliable coordinate picking
-    // (globe.pick depends on terrain tile loading and can return null)
+    // Click handler — consolidated: checks observation markers first,
+    // then falls back to coordinate picking with snap-to-nearest.
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction(
       (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+        // First: check if the user clicked on an observation marker
+        const picked = viewer.scene.pick(movement.position);
+        if (Cesium.defined(picked) && picked.id && picked.id.properties) {
+          const obsId = picked.id.properties.observationId?.getValue();
+          if (obsId) {
+            const obs = observationsRef.current.find((o) => o.id === obsId);
+            if (obs) {
+              setSelectedObservationId(obsId);
+              setSelectedLocation({ latitude: obs.latitude, longitude: obs.longitude });
+              return; // Observation marker clicked — done
+            }
+          }
+        }
+
+        // Second: no marker clicked — pick coordinates and snap to nearest
         const cartesian = viewer.camera.pickEllipsoid(
           movement.position,
           viewer.scene.globe.ellipsoid
@@ -110,7 +156,7 @@ export function OceanGlobe() {
       viewer.destroy();
       viewerRef.current = null;
     };
-  }, [handleCoordinateClick]);
+  }, [handleCoordinateClick, setSelectedObservationId, setSelectedLocation]);
 
   // Update camera when region changes
   useEffect(() => {
@@ -134,6 +180,11 @@ export function OceanGlobe() {
       duration: 2,
     });
   }, [selectedRegion]);
+
+  // Update observationsRef when observations change
+  useEffect(() => {
+    observationsRef.current = observations;
+  }, [observations]);
 
   // Show observation points
   useEffect(() => {
@@ -182,30 +233,8 @@ export function OceanGlobe() {
 
       markersRef.current.push(entity);
     });
-
-    // Click handler for observation points
-    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-    handler.setInputAction(
-      (movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-        const picked = viewer.scene.pick(movement.position);
-        if (Cesium.defined(picked) && picked.id && picked.id.properties) {
-          const obsId = picked.id.properties.observationId?.getValue();
-          if (obsId) {
-            setSelectedObservationId(obsId);
-            const obs = observations.find((o) => o.id === obsId);
-            if (obs) {
-              setSelectedLocation({ latitude: obs.latitude, longitude: obs.longitude });
-            }
-          }
-        }
-      },
-      Cesium.ScreenSpaceEventType.LEFT_CLICK
-    );
-
-    return () => {
-      handler.destroy();
-    };
-  }, [setSelectedLocation, setSelectedObservationId, observations]);
+    // Note: click handling for observation markers is done in the consolidated handler above
+  }, [observations]);
 
   // Show selected coordinate marker
   useEffect(() => {
@@ -258,7 +287,7 @@ export function OceanGlobe() {
       {/* Globe overlay info */}
       <div className="absolute bottom-4 left-4 rounded-lg border border-slate-700/50 bg-[#0d1224]/80 px-3 py-2 backdrop-blur-md">
         <p className="text-[10px] text-slate-500">
-          Click anywhere on the ocean to select a coordinate
+          Click an observation marker or near one to select scientific data
         </p>
       </div>
     </div>

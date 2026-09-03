@@ -19,8 +19,8 @@ export function InvestigationWorkflow() {
     setError(null);
     try {
       const [workflowSteps, sol] = await Promise.all([
-        getWorkflowSteps('diag-001'),
-        getRecommendations('diag-001'),
+        getWorkflowSteps(),
+        getRecommendations(),
       ]);
       setSteps(workflowSteps);
       setSolution(sol);

@@ -25,6 +25,7 @@ import type {
   WorkflowResult,
   VisualizationRequest,
   Visualization3DResult,
+  ResearchVisualization3DResult,
 } from './types';
 
 export interface OceanDataProvider {
@@ -53,6 +54,9 @@ export interface OceanDataProvider {
   /** Get investigation workflow steps and recommendations */
   fetchWorkflow(diagnosticId: string): Promise<ProviderResponse<WorkflowResult>>;
 
-  /** Get data formatted for 3D visualization */
+  /** Get data formatted for 3D visualization (HYCOM Pipeline B) */
   fetchVisualization(request: VisualizationRequest): Promise<ProviderResponse<Visualization3DResult>>;
+
+  /** Get Research 3D visualization of GLORYS × Argo collocated observations */
+  fetchResearchVisualization(request: VisualizationRequest): Promise<ProviderResponse<ResearchVisualization3DResult>>;
 }

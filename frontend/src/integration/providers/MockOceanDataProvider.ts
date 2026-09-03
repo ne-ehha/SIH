@@ -29,6 +29,7 @@ import type {
   WorkflowResult,
   VisualizationRequest,
   Visualization3DResult,
+  ResearchVisualization3DResult,
   ObservationStation,
   DiscrepancyPoint,
   SurfaceGridPoint,
@@ -383,6 +384,31 @@ export class MockOceanDataProvider implements OceanDataProvider {
       surfaceLayer: gridPoints,
       depthSlices,
       verticalProfile,
+    });
+  }
+
+  // ── Research 3D Visualization (mock stub) ──────────────────────────────────
+
+  async fetchResearchVisualization(req: VisualizationRequest): Promise<ProviderResponse<ResearchVisualization3DResult>> {
+    const unit = req.variable === 'temperature' ? '°C' : 'PSU';
+    return this.ok({
+      variable: req.variable,
+      unit,
+      date: req.date,
+      time: req.time,
+      sourceModel: 'MOCK_GLORYS',
+      sourceObservation: 'MOCK_ARGO',
+      points: [],
+      stats: {
+        totalPoints: 0,
+        argoMean: 0,
+        glorysMean: 0,
+        meanDifference: 0,
+        rmsDifference: 0,
+        maxDifference: 0,
+        depthRange: [0, 0],
+        spatialBounds: { north: 0, south: 0, east: 0, west: 0 },
+      },
     });
   }
 }

@@ -46,6 +46,7 @@ export { useDiscrepancy } from './hooks/useDiscrepancy';
 export { useObservations } from './hooks/useObservations';
 export { useDiagnostics } from './hooks/useDiagnostics';
 export { useVisualization3D } from './hooks/useVisualization3D';
+export { useResearchVisualization3D } from './hooks/useResearchVisualization3D';
 
 // ── Types for components that need raw data shapes ──────────────────────────
 export type {
@@ -83,6 +84,9 @@ export type {
   DiagnosticResult,
   WorkflowResult,
   Visualization3DResult,
+  ResearchVisualization3DResult,
+  Research3DPoint,
+  Research3DStats,
   ComparisonRequest,
   ProfileRequest,
   DiscrepancyRequest,

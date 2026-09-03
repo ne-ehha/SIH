@@ -47,7 +47,10 @@ export function DiscrepancyMap() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Discrepancy Map</h3>
+        <div>
+          <h3 className="text-sm font-semibold text-white">Discrepancy Map</h3>
+          <p className="text-[10px] text-slate-500 mt-0.5">GLORYS12V1 − Argo Delayed Mode | {selectedDate}</p>
+        </div>
         <div className="flex gap-1">
           {(['all', 'temperature', 'salinity'] as const).map((v) => (
             <button
@@ -65,34 +68,51 @@ export function DiscrepancyMap() {
         </div>
       </div>
 
-      {/* Heatmap visualization */}
+      {/* Observation points visualization */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4">
-        <div className="grid grid-cols-10 gap-1">
-          {filteredData.map((point, i) => (
-            <div
-              key={i}
-              className="group relative aspect-square rounded-sm cursor-pointer transition-transform hover:scale-110"
-              style={{ backgroundColor: getErrorColor(point.errorMagnitude) }}
-              title={`${point.latitude.toFixed(1)}°N, ${point.longitude.toFixed(1)}°E\nDepth: ${point.depth}m\nError: ${point.errorMagnitude > 0 ? '+' : ''}${point.errorMagnitude.toFixed(1)}°C`}
-            >
-              {/* Tooltip */}
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[9px] text-white shadow-lg group-hover:block">
-                {point.errorMagnitude > 0 ? '+' : ''}{point.errorMagnitude.toFixed(1)}°C
-              </div>
+        {filteredData.length === 0 ? (
+          <p className="text-center text-xs text-slate-500 py-8">No discrepancy data available for this selection.</p>
+        ) : (
+          <>
+            {/* Point list with geographic context */}
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {filteredData.slice(0, 30).map((point, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded px-2 py-1.5 hover:bg-slate-800/30"
+                >
+                  <div
+                    className="h-3 w-3 rounded-full shrink-0"
+                    style={{ backgroundColor: getErrorColor(point.errorMagnitude) }}
+                  />
+                  <div className="flex-1 grid grid-cols-4 gap-2 text-[10px]">
+                    <span className="text-slate-400">{point.latitude.toFixed(2)}°N, {point.longitude.toFixed(2)}°E</span>
+                    <span className="text-slate-400">{point.depth.toFixed(0)} dbar</span>
+                    <span className="text-slate-400">{point.variable}</span>
+                    <span className={point.errorMagnitude >= 0 ? 'text-red-400' : 'text-blue-400'}>
+                      {point.errorMagnitude > 0 ? '+' : ''}{point.errorMagnitude.toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+            {filteredData.length > 30 && (
+              <p className="text-[9px] text-slate-600 text-center mt-2">Showing 30 of {filteredData.length} points</p>
+            )}
+          </>
+        )}
 
-        {/* Color scale */}
-        <div className="mt-4 flex items-center justify-center gap-2">
-          <span className="text-[10px] text-blue-400">Negative</span>
-          <div className="h-2 w-32 rounded-full bg-gradient-to-r from-blue-500 via-slate-700 to-red-500" />
-          <span className="text-[10px] text-red-400">Positive</span>
+        {/* Legend */}
+        <div className="mt-4 border-t border-slate-800 pt-3 space-y-2">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-[10px] text-blue-400">GLORYS {'<'} Argo</span>
+            <div className="h-2 w-32 rounded-full bg-gradient-to-r from-blue-500 via-slate-700 to-red-500" />
+            <span className="text-[10px] text-red-400">GLORYS {'>'} Argo</span>
+          </div>
+          <p className="text-center text-[10px] text-slate-600">
+            Difference = GLORYS12V1 − Argo Delayed Mode | {filteredData.length} observation points
+          </p>
         </div>
-
-        <p className="mt-2 text-center text-[10px] text-slate-500">
-          Real API discrepancy data
-        </p>
       </div>
     </div>
   );

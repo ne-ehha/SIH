@@ -11,11 +11,18 @@ import { DiscrepancyMap } from '@/components/discrepancy/DiscrepancyMap';
 import { DiagnosticPanel } from '@/components/diagnostics/DiagnosticPanel';
 import { InvestigationWorkflow } from '@/components/workflow/InvestigationWorkflow';
 import { Ocean3DView } from '@/components/visualization/Ocean3DView';
+import { Research3DView } from '@/components/visualization/Research3DView';
 import { SolutionsPanel } from '@/components/diagnostics/SolutionsPanel';
 import { useOceanStore } from '@/state/oceanStore';
+import { ResearchReport } from '@/components/reports/ResearchReport';
+
+// HYCOM operational date range
+const HYCOM_DATE_START = '2026-08-26';
+const HYCOM_DATE_END = '2026-09-01';
 
 function App() {
-  const { activeView, isModelViewOpen } = useOceanStore();
+  const { activeView, isModelViewOpen, selectedDate } = useOceanStore();
+  const isHycom = selectedDate >= HYCOM_DATE_START && selectedDate <= HYCOM_DATE_END;
 
   // Pipeline A views: comparison/profile/discrepancy/diagnostics use GLORYS×Argo (Jan 2024)
   const isPipelineAView = activeView === 'compare' || activeView === 'discrepancies' || activeView === 'diagnostics' || activeView === 'solutions' || activeView === 'reports';
@@ -43,12 +50,12 @@ function App() {
             {/* View-specific content */}
             {activeView === 'explore' && (
               <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4">
-                <h3 className="text-sm font-semibold text-white">HYCOM Model Exploration</h3>
+                <h3 className="text-sm font-semibold text-white">Research Mode — GLORYS × Argo</h3>
                 <p className="mt-2 text-xs text-slate-400">
-                  Exploring INCOIS HYCOM 2.35 model data. Select a location and open 3D view to visualize model fields.
+                  Model-observation comparison using GLORYS12V1 and Argo Delayed Mode collocated observations.
                 </p>
                 <p className="mt-1 text-[10px] text-slate-500">
-                  Pipeline B — Model-only data. Use Compare for GLORYS×Argo model-observation comparison.
+                  Select a location and date (Jan 2024) to compare model output with real Argo observations.
                 </p>
               </div>
             )}
@@ -71,25 +78,16 @@ function App() {
 
             {activeView === 'solutions' && <SolutionsPanel />}
 
-            {activeView === 'reports' && (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <ModelHealthCard />
-                <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4">
-                  <h3 className="text-sm font-semibold text-white">Reports</h3>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Report generation will be available after backend integration.
-                  </p>
-                </div>
-              </div>
-            )}
+            {activeView === 'reports' && <ResearchReport />}
 
 
           </div>
         </div>
       </div>
 
-      {/* 3D Model View Modal */}
-      {isModelViewOpen && <Ocean3DView />}
+      {/* 3D Visualization Modal — routes to correct pipeline */}
+      {isModelViewOpen && isHycom && <Ocean3DView />}
+      {isModelViewOpen && !isHycom && <Research3DView />}
     </DashboardLayout>
   );
 }
