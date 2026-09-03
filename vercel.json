@@ -3,18 +3,6 @@
   "installCommand": "cd frontend && npm install",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxDuration": 30,
-        "includeFiles": [
-          "backend/**"
-        ]
-      }
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/:path*",
