@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 HYCOM_FILE = PROJECT_ROOT / "RSMC_hycom_20260827.nc"
 ARGO_FILE = PROJECT_ROOT / "argo_dm_BOB_2024.nc"
-COLLOCATION_FILE = PROJECT_ROOT / "processed" / "glorys_argo_collocation_2024.nc"
+COLLOCATION_FILE = PROJECT_ROOT / "backend" / "data" / "glorys_argo_collocation_2024.nc"
 ARGO_INDEX_FILE = PROJECT_ROOT / "argo_dm_BOB_index.csv"
 
 # ── API configuration ────────────────────────────────────────────────────────
