@@ -222,3 +222,4 @@ HYCOM/*.nc
 
 # macOS files
 .DS_Store
+.vercel
