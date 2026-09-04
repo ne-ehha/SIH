@@ -23,10 +23,11 @@ const providers: Record<string, OceanDataProvider> = {
 
 // ── Active provider ─────────────────────────────────────────────────────────
 
-// Auto-select the API provider when VITE_API_BASE_URL is configured.
-// Fall back to mock if no backend URL is set.
-const hasApiUrl = !!(import.meta.env.VITE_API_BASE_URL);
-let activeProviderKey: string = hasApiUrl ? 'api' : 'mock';
+// Use the API provider by default.
+// Local dev: Vite proxy forwards /api → localhost:8000.
+// Production (Vercel): rewrites forward /api → Python serverless function.
+// Only fall back to mock if explicitly requested via VITE_DATA_PROVIDER=mock.
+let activeProviderKey: string = (import.meta.env.VITE_DATA_PROVIDER === 'mock') ? 'mock' : 'api';
 
 /**
  * Get the currently active data provider.
