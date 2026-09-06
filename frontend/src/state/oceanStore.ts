@@ -40,6 +40,8 @@ interface OceanStore {
   toggleSidebar: () => void;
   toggleLayer: (layerId: string) => void;
   setSelectedObservationId: (id: string | null) => void;
+  selectResearchObservation: (selection: { id: string; location: Location; date: string }) => void;
+  clearSelectedObservation: () => void;
   setApiStatus: (status: 'idle' | 'loading' | 'success' | 'error') => void;
   resetSelection: () => void;
 }
@@ -72,7 +74,8 @@ export const useOceanStore = create<OceanStore>((set) => ({
   setSelectedLocation: (location) => set({ selectedLocation: location }),
   setSelectedDepth: (depth) => set({ selectedDepth: depth }),
   setSelectedVariable: (variable) => set({ selectedVariable: variable }),
-  setSelectedDate: (date) => set({ selectedDate: date }),
+  // A manually chosen date cannot safely retain a marker's profile identity.
+  setSelectedDate: (date) => set({ selectedDate: date, selectedObservationId: null }),
   setSelectedTime: (time) => set({ selectedTime: time }),
   setSelectedRegion: (region) => set({ selectedRegion: region }),
   setActiveView: (view) => set({ activeView: view }),
@@ -86,6 +89,13 @@ export const useOceanStore = create<OceanStore>((set) => ({
       ),
     })),
   setSelectedObservationId: (id) => set({ selectedObservationId: id }),
+  // Keep marker identity, location, and observation date atomic for Research Mode.
+  selectResearchObservation: ({ id, location, date }) => set({
+    selectedObservationId: id,
+    selectedLocation: location,
+    selectedDate: date,
+  }),
+  clearSelectedObservation: () => set({ selectedObservationId: null }),
   setApiStatus: (status) => set({ apiStatus: status }),
   resetSelection: () =>
     set({

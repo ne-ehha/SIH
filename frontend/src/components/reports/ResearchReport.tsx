@@ -42,6 +42,7 @@ export function ResearchReport() {
     variable: selectedVariable,
     date: selectedDate,
     time: selectedTime,
+    selectedObservationId: null,
   });
 
   useEffect(() => {

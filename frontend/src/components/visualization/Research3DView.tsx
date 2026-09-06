@@ -8,11 +8,12 @@
  * sparse, irregularly spaced GLORYS × Argo collocated observations.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D } from '@/integration';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
+import { DepthInspectorScene } from './research3d/DepthInspectorScene';
 import type { Research3DPoint } from '@/integration';
 
 export function Research3DView() {
@@ -22,12 +23,17 @@ export function Research3DView() {
     selectedVariable,
     selectedDate,
     selectedTime,
+    selectedObservationId,
+    selectedDepth,
+    setSelectedDepth,
     isModelViewOpen,
     setIsModelViewOpen,
   } = useOceanStore();
 
   const {
     points,
+    selectedProfilePoints,
+    selectedMeasurement,
     stats,
     unit,
     loading,
@@ -38,6 +44,8 @@ export function Research3DView() {
     variable: selectedVariable,
     date: selectedDate,
     time: selectedTime,
+    selectedObservationId,
+    selectedDepth,
   });
 
   if (!isModelViewOpen || !selectedLocation) return null;
@@ -146,6 +154,49 @@ export function Research3DView() {
               )}
               {!loading && !error && points.length > 0 && (
                 <div className="space-y-8">
+                  {/* 3D Depth Inspector (R3F Canvas) */}
+                  <div>
+                    <h3 className="mb-2 text-sm font-medium text-slate-300">3D Depth Inspector</h3>
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/30" style={{ height: '400px' }}>
+                      <DepthInspectorScene
+                        className="h-full w-full"
+                        profilePoints={selectedProfilePoints}
+                        unit={unit}
+                        variable={selectedVariable}
+                        selectedDepth={selectedDepth}
+                      />
+                    </div>
+                    {/* Depth slider */}
+                    <div className="mt-3 flex items-center gap-3">
+                      <label className="text-[10px] text-slate-500 whitespace-nowrap">Depth</label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={500}
+                        step={1}
+                        value={selectedDepth}
+                        onChange={(e) => setSelectedDepth(Number(e.target.value))}
+                        className="flex-1 h-1 appearance-none bg-slate-700 rounded cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
+                      />
+                      <span className="text-[11px] text-cyan-400 font-mono w-12 text-right">{selectedDepth}m</span>
+                    </div>
+                    {selectedProfilePoints.length > 0 && (
+                      <p className="mt-2 text-[10px] text-slate-500">
+                        {selectedProfilePoints.length} depth records — Platform {selectedProfilePoints[0].platformNumber}, Cycle {selectedProfilePoints[0].cycleNumber}
+                      </p>
+                    )}
+                    {selectedObservationId && selectedProfilePoints.length === 0 && !loading && (
+                      <p className="mt-2 text-[10px] text-amber-500">
+                        No matching profile found for {selectedObservationId} on {selectedDate}
+                      </p>
+                    )}
+                    {!selectedObservationId && (
+                      <p className="mt-2 text-[10px] text-slate-500">
+                        Click an Argo observation marker on the globe to view its profile in 3D
+                      </p>
+                    )}
+                  </div>
+
                   {/* Selected observation detail panel */}
                   {selectedPoint && (
                     <SelectedPointDetail point={selectedPoint} unit={unit} onClose={() => setSelectedPoint(null)} />
@@ -176,13 +227,24 @@ export function Research3DView() {
                   />
 
                   {/* Comparison chart: Argo vs GLORYS at each depth */}
-                  <ComparisonChart points={points} unit={unit} variable={selectedVariable} />
+                  <ComparisonChart
+                    points={selectedProfilePoints}
+                    unit={unit}
+                    variable={selectedVariable}
+                    selectedMeasurement={selectedMeasurement}
+                  />
 
                   {/* Observation table (first 20) */}
-                  <ObservationTable points={points.slice(0, 20)} unit={unit} variable={selectedVariable} onSelectPoint={setSelectedPoint} />
-                  {points.length > 20 && (
+                  <ObservationTable
+                    points={selectedProfilePoints.slice(0, 20)}
+                    unit={unit}
+                    variable={selectedVariable}
+                    selectedMeasurement={selectedMeasurement}
+                    onSelectPoint={setSelectedPoint}
+                  />
+                  {selectedProfilePoints.length > 20 && (
                     <p className="text-[10px] text-slate-600 text-center">
-                      Showing 20 of {points.length} observations
+                      Showing 20 of {selectedProfilePoints.length} profile observations
                     </p>
                   )}
                 </div>
@@ -368,10 +430,12 @@ function ComparisonChart({
   points,
   unit,
   variable,
+  selectedMeasurement,
 }: {
   points: Research3DPoint[];
   unit: string;
   variable: string;
+  selectedMeasurement: Research3DPoint | null;
 }) {
   // Group by unique depth (pressure) and average values
   const depthMap = new Map<number, { argo: number[]; glorys: number[] }>();
@@ -460,6 +524,14 @@ function ComparisonChart({
             </g>
           ))}
 
+          {selectedMeasurement && (
+            <g>
+              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#67e8f9" strokeWidth="1" strokeDasharray="3 2" />
+              <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
+              <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
+            </g>
+          )}
+
           {/* Legend */}
           <line x1={padL + 10} y1={chartH - 8} x2={padL + 30} y2={chartH - 8} stroke="#a855f7" strokeWidth="2" strokeDasharray="4 2" />
           <text x={padL + 34} y={chartH - 5} fill="#94a3b8" fontSize="8">Argo</text>
@@ -486,11 +558,13 @@ function ObservationTable({
   points,
   unit,
   variable,
+  selectedMeasurement,
   onSelectPoint,
 }: {
   points: Research3DPoint[];
   unit: string;
   variable: string;
+  selectedMeasurement: Research3DPoint | null;
   onSelectPoint?: (point: Research3DPoint) => void;
 }) {
   return (
@@ -510,8 +584,12 @@ function ObservationTable({
             </tr>
           </thead>
           <tbody>
-            {points.map((p, i) => (
-              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30" onClick={() => onSelectPoint?.(p)} style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}>
+            {points.map((p, i) => {
+              const isSelected = selectedMeasurement?.platformNumber === p.platformNumber
+                && selectedMeasurement?.cycleNumber === p.cycleNumber
+                && selectedMeasurement?.pressure === p.pressure;
+              return (
+              <tr key={i} className={`border-b border-slate-800/50 hover:bg-slate-800/30 ${isSelected ? 'bg-cyan-950/40' : ''}`} onClick={() => onSelectPoint?.(p)} style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}>
                 <td className="px-2 py-1 text-slate-300">{p.latitude.toFixed(2)}</td>
                 <td className="px-2 py-1 text-slate-300">{p.longitude.toFixed(2)}</td>
                 <td className="px-2 py-1 text-right text-slate-300">{p.pressure.toFixed(1)}</td>
@@ -522,7 +600,8 @@ function ObservationTable({
                 </td>
                 <td className="px-2 py-1 text-slate-400">{p.platformNumber}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

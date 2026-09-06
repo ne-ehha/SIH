@@ -18,7 +18,7 @@ export function OceanGlobe() {
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const markersRef = useRef<Cesium.Entity[]>([]);
 
-  const { setSelectedLocation, selectedLocation, selectedRegion, setSelectedObservationId } = useOceanStore();
+  const { setSelectedLocation, selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedDate } = useOceanStore();
   const [observations, setObservations] = useState<ObservationPoint[]>([]);
 
   // Fetch real observation data from the API
@@ -26,7 +26,7 @@ export function OceanGlobe() {
     fetchObservations(selectedRegion)
       .then(setObservations)
       .catch(() => setObservations([]));
-  }, [selectedRegion]);
+  }, [selectedRegion, selectedDate]);
 
   // Store observations in a ref so the click handler can access them
   const observationsRef = useRef<ObservationPoint[]>([]);
@@ -61,14 +61,17 @@ export function OceanGlobe() {
       // Snap to nearest observation if within ~200km (~1.8 degrees)
       const SNAP_THRESHOLD = 1.8;
       if (nearestDist < SNAP_THRESHOLD) {
+        // This remains navigation only: it must not retain a previously selected profile.
+        clearSelectedObservation();
         setSelectedLocation({ latitude: nearestLat, longitude: nearestLng });
       } else {
+        clearSelectedObservation();
         // No nearby observation — just navigate (no scientific selection)
         // Don't set selectedLocation to avoid fake observation data
         console.info(`Click at ${lat.toFixed(2)}, ${lng.toFixed(2)} — no Argo profile within ${SNAP_THRESHOLD.toFixed(1)}°. Use observation markers for scientific data.`);
       }
     },
-    [setSelectedLocation]
+    [clearSelectedObservation, setSelectedLocation]
   );
 
   // Initialize Cesium Viewer
@@ -130,8 +133,11 @@ export function OceanGlobe() {
           if (obsId) {
             const obs = observationsRef.current.find((o) => o.id === obsId);
             if (obs) {
-              setSelectedObservationId(obsId);
-              setSelectedLocation({ latitude: obs.latitude, longitude: obs.longitude });
+              selectResearchObservation({
+                id: obsId,
+                location: { latitude: obs.latitude, longitude: obs.longitude },
+                date: obs.timestamp.substring(0, 10),
+              });
               return; // Observation marker clicked — done
             }
           }
@@ -156,7 +162,7 @@ export function OceanGlobe() {
       viewer.destroy();
       viewerRef.current = null;
     };
-  }, [handleCoordinateClick, setSelectedObservationId, setSelectedLocation]);
+  }, [handleCoordinateClick, selectResearchObservation]);
 
   // Update camera when region changes
   useEffect(() => {

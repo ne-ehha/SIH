@@ -4,14 +4,14 @@ import { fetchObservations } from '@/services/observationService';
 import type { ObservationPoint } from '@/types/observation';
 
 export function ObservationPoints() {
-  const { selectedObservationId, selectedRegion } = useOceanStore();
+  const { selectedObservationId, selectedRegion, selectedDate } = useOceanStore();
   const [observations, setObservations] = useState<ObservationPoint[]>([]);
 
   useEffect(() => {
     fetchObservations(selectedRegion)
       .then(setObservations)
       .catch(() => setObservations([]));
-  }, [selectedRegion]);
+  }, [selectedRegion, selectedDate]);
 
   const activeObs = observations.filter(o => o.status === 'active').slice(0, 5);
 
