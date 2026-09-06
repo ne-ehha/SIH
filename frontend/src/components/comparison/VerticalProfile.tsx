@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -10,50 +9,49 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useOceanStore } from '@/state/oceanStore';
-import { fetchVerticalProfile } from '@/services/oceanService';
-import type { VerticalProfilePoint } from '@/types/model';
+import { useResearchVisualization3D } from '@/integration';
 import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 
 export function VerticalProfile() {
-  const { selectedLocation, selectedVariable } = useOceanStore();
-  const [profileData, setProfileData] = useState<VerticalProfilePoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadData = async () => {
-    if (!selectedLocation) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchVerticalProfile(selectedLocation, selectedVariable);
-      setProfileData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedLocation) {
-      loadData();
-    }
-  }, [selectedLocation, selectedVariable]);
+  const {
+    selectedLocation,
+    selectedVariable,
+    selectedDate,
+    selectedTime,
+    selectedDepth,
+    selectedObservationId,
+  } = useOceanStore();
+  const { selectedProfilePoints, selectedMeasurement, loading, error, refetch } = useResearchVisualization3D({
+    latitude: selectedLocation?.latitude ?? null,
+    longitude: selectedLocation?.longitude ?? null,
+    variable: selectedVariable,
+    date: selectedDate,
+    time: selectedTime,
+    selectedObservationId,
+    selectedDepth,
+    enabled: Boolean(selectedObservationId),
+  });
 
   if (!selectedLocation) {
     return <EmptyState message="Select a location to view vertical profile" icon="📊" />;
   }
 
-  if (loading) return <LoadingState message="Loading vertical profile..." />;
-  if (error) return <ErrorState message={error} onRetry={loadData} />;
-  if (profileData.length === 0) return <EmptyState message="No profile data available" />;
+  if (!selectedObservationId) {
+    return <EmptyState message="Select a real Argo observation marker to view its profile" />;
+  }
+
+  if (loading) return <LoadingState message="Loading selected vertical profile..." />;
+  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (selectedProfilePoints.length === 0) return <EmptyState message="No selected profile data available" />;
 
   // Invert depth for oceanographic convention (0 at top, deeper at bottom)
-  const chartData = profileData.map((point) => ({
-    ...point,
-    depthLabel: `${point.depth}m`,
+  const chartData = selectedProfilePoints.map((point) => ({
+    depth: point.pressure,
+    depthLabel: `${point.pressure.toFixed(1)}m`,
+    modelValue: point.glorysValue,
+    observationValue: point.argoValue,
   }));
 
   return (
@@ -88,11 +86,16 @@ export function VerticalProfile() {
               }}
             />
             <Legend wrapperStyle={{ fontSize: '11px' }} />
-            <Line type="monotone" dataKey="modelValue" stroke="#06b6d4" strokeWidth={2} name="Model" dot={false} />
-            <Line type="monotone" dataKey="observationValue" stroke="#a855f7" strokeWidth={2} name="Observation" dot={false} strokeDasharray="5 5" />
+            <Line type="monotone" dataKey="modelValue" stroke="#06b6d4" strokeWidth={2} name="GLORYS" dot={false} />
+            <Line type="monotone" dataKey="observationValue" stroke="#a855f7" strokeWidth={2} name="Argo" dot={false} strokeDasharray="5 5" />
           </LineChart>
         </ResponsiveContainer>
       </div>
+      {selectedMeasurement && (
+        <p className="text-[10px] text-cyan-300">
+          Selected real record: {selectedMeasurement.pressure.toFixed(1)} dbar (slider {selectedDepth}m)
+        </p>
+      )}
     </div>
   );
 }
