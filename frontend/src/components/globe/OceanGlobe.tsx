@@ -250,7 +250,7 @@ export function OceanGlobe() {
   // The initial view is driven by the loaded evidence extent, not a second
   // hardcoded camera command that can override it.
   useEffect(() => {
-    if (!viewerReady || initialCameraSetRef.current || observationsLoading) return;
+    if (!viewerReady || initialCameraSetRef.current) return;
     if (fitCameraToPoints(observations)) initialCameraSetRef.current = true;
   }, [fitCameraToPoints, observations, observationsLoading, viewerReady]);
 
