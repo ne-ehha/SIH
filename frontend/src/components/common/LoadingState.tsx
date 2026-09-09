@@ -4,9 +4,9 @@ interface LoadingStateProps {
 
 export function LoadingState({ message = 'Loading data...' }: LoadingStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-      <p className="text-sm text-slate-400">{message}</p>
+    <div className="flex flex-col items-center gap-2 py-6">
+      <div className="h-5 w-5 animate-spin rounded-full border-[1.5px] border-t-transparent" style={{ borderColor: 'var(--os-argo)', borderTopColor: 'transparent' }} />
+      <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>{message}</p>
     </div>
   );
 }

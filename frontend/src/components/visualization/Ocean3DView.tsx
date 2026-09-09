@@ -35,13 +35,13 @@ export function Ocean3DView() {
   if (!isModelViewOpen || !selectedLocation) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="mx-4 flex h-[90vh] w-full max-w-6xl flex-col rounded-2xl border border-slate-700/50 bg-[#0a0e1a] shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(8,12,22,0.85)' }}>
+      <div className="mx-4 flex h-[90vh] w-full max-w-6xl flex-col border" style={{ borderColor: 'var(--os-border)', background: 'var(--os-bg)' }}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+        <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: 'var(--os-border)' }}>
           <div>
-            <h2 className="text-lg font-semibold text-white">3D Ocean Visualization</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--os-text)' }}>3D Ocean Visualization</h2>
+            <p className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>
               {selectedLocation.latitude.toFixed(2)}° {selectedLocation.latitude >= 0 ? 'N' : 'S'},{' '}
               {selectedLocation.longitude.toFixed(2)}° {selectedLocation.longitude >= 0 ? 'E' : 'W'}
               {unit && <span className="ml-2 text-cyan-400">• {selectedVariable} ({unit})</span>}
@@ -49,7 +49,8 @@ export function Ocean3DView() {
           </div>
           <button
             onClick={() => setIsModelViewOpen(false)}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+            className="p-2 transition"
+            style={{ color: 'var(--os-text-3)' }}
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
@@ -60,7 +61,7 @@ export function Ocean3DView() {
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Controls sidebar */}
-          <div className="w-64 border-r border-slate-800 p-4 overflow-y-auto">
+          <div className="w-64 border-r p-4 overflow-y-auto" style={{ borderColor: 'var(--os-border)' }}>
             <DepthControl />
             <div className="mt-4">
               <VariableControls />
@@ -77,7 +78,8 @@ export function Ocean3DView() {
               {(['surface', 'depth', 'profile'] as const).map((layer) => (
                 <button
                   key={layer}
-                  className="rounded-md px-3 py-1 text-xs font-medium bg-slate-800/80 text-slate-400 hover:text-white"
+                  className="px-3 py-1 text-[11px] font-medium"
+                  style={{ background: 'var(--os-surface-2)', color: 'var(--os-text-3)', border: '1px solid var(--os-border)' }}
                 >
                   {layer === 'surface' ? 'Surface Layer' : layer === 'depth' ? 'Depth Slices' : 'Vertical Profile'}
                 </button>
@@ -85,7 +87,7 @@ export function Ocean3DView() {
             </div>
 
             {/* Visualization content */}
-            <div className="h-full w-full bg-gradient-to-b from-[#0d1b3e] to-[#0a0e1a] overflow-y-auto">
+            <div className="h-full w-full overflow-y-auto" style={{ background: 'var(--os-bg)' }}>
               {loading && (
                 <div className="flex h-full items-center justify-center">
                   <LoadingState message="Loading HYCOM visualization data..." />
@@ -128,7 +130,7 @@ function SurfaceLayerViz({ data, unit }: { data: SurfaceGridCell[]; unit: string
   if (!data || data.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <p className="text-xs text-slate-500">No surface layer data available</p>
+        <p className="text-xs" style={{ color: 'var(--os-text-3)' }}>No surface layer data available</p>
       </div>
     );
   }
@@ -154,8 +156,8 @@ function SurfaceLayerViz({ data, unit }: { data: SurfaceGridCell[]; unit: string
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">Surface Layer</h3>
-      <div className="inline-block rounded-lg border border-slate-800 bg-slate-900/30 p-3">
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>Surface Layer</h3>
+      <div className="inline-block border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <div className="grid gap-px" style={{ gridTemplateColumns: `repeat(${lons.length}, 1fr)` }}>
           {lats.map((lat) =>
             lons.map((lon) => {
@@ -172,13 +174,13 @@ function SurfaceLayerViz({ data, unit }: { data: SurfaceGridCell[]; unit: string
           )}
         </div>
         {/* Color scale */}
-        <div className="mt-2 flex items-center justify-between text-[9px] text-slate-500">
+        <div className="mt-2 flex items-center justify-between text-[9px]" style={{ color: 'var(--os-text-3)' }}>
           <span>{minVal.toFixed(1)} {unit}</span>
           <div className="mx-2 h-1.5 flex-1 rounded-full bg-gradient-to-r from-blue-600 via-green-500 to-red-500" />
           <span>{maxVal.toFixed(1)} {unit}</span>
         </div>
       </div>
-      <p className="mt-2 text-[10px] text-slate-500">
+      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
         HYCOM surface grid — {data.length} points — {unit}
       </p>
     </div>
@@ -189,20 +191,20 @@ function DepthSliceViz({ data }: { data: DepthSliceDisplay[] }) {
   if (!data || data.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <p className="text-xs text-slate-500">No depth slice data available</p>
+        <p className="text-xs" style={{ color: 'var(--os-text-3)' }}>No depth slice data available</p>
       </div>
     );
   }
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">Depth Slices</h3>
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>Depth Slices</h3>
       <div className="flex flex-col gap-2 max-w-md">
         {data.map((slice) => {
           const hue = slice.percentage > 0 ? ((100 - slice.percentage) / 100) * 240 : 200;
           return (
             <div key={slice.depth} className="flex items-center gap-3">
-              <span className="w-16 text-right text-[10px] text-slate-500">{slice.depth}m</span>
+              <span className="w-16 text-right text-[10px]" style={{ color: 'var(--os-text-3)' }}>{slice.depth}m</span>
               <div className="flex-1 h-6 rounded bg-gradient-to-r from-blue-900/50 to-blue-600/30 relative overflow-hidden">
                 <div
                   className="absolute inset-y-0 left-0 rounded transition-all duration-500"
@@ -212,12 +214,12 @@ function DepthSliceViz({ data }: { data: DepthSliceDisplay[] }) {
                   }}
                 />
               </div>
-              <span className="w-20 text-[10px] text-slate-400">{slice.meanValue.toFixed(2)} {slice.unit}</span>
+              <span className="w-20 text-[10px]" style={{ color: 'var(--os-text-2)' }}>{slice.meanValue.toFixed(2)} {slice.unit}</span>
             </div>
           );
         })}
       </div>
-      <p className="mt-2 text-[10px] text-slate-500">
+      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
         HYCOM depth levels — {data.length} slices
       </p>
     </div>
@@ -228,7 +230,7 @@ function ProfileViz({ data, unit }: { data: ProfileChartPoint[]; unit: string })
   if (!data || data.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <p className="text-xs text-slate-500">No profile data available</p>
+        <p className="text-xs" style={{ color: 'var(--os-text-3)' }}>No profile data available</p>
       </div>
     );
   }
@@ -263,14 +265,14 @@ function ProfileViz({ data, unit }: { data: ProfileChartPoint[]; unit: string })
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">Vertical Profile</h3>
-      <div className="inline-block rounded-lg border border-slate-800 bg-slate-900/30 p-4">
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>Vertical Profile</h3>
+      <div className="inline-block border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-48 w-full">
           {/* Grid lines */}
           {depthTicks.map((d) => (
             <g key={d}>
-              <line x1={padL} y1={toY(d)} x2={chartW - padR} y2={toY(d)} stroke="#1e293b" strokeWidth="0.5" />
-              <text x={padL - 4} y={toY(d) + 3} textAnchor="end" fill="#64748b" fontSize="8">
+              <line x1={padL} y1={toY(d)} x2={chartW - padR} y2={toY(d)} stroke="var(--os-border)" strokeWidth="0.5" />
+              <text x={padL - 4} y={toY(d) + 3} textAnchor="end" fill="var(--os-text-3)" fontSize="8">
                 {d}m
               </text>
             </g>
@@ -309,12 +311,12 @@ function ProfileViz({ data, unit }: { data: ProfileChartPoint[]; unit: string })
 
           {/* Legend */}
           <line x1={padL + 10} y1={chartH - 8} x2={padL + 30} y2={chartH - 8} stroke="#06b6d4" strokeWidth="2" />
-          <text x={padL + 34} y={chartH - 5} fill="#94a3b8" fontSize="8">Model</text>
+          <text x={padL + 34} y={chartH - 5} fill="var(--os-text-2)" fontSize="8">Model</text>
           <line x1={padL + 80} y1={chartH - 8} x2={padL + 100} y2={chartH - 8} stroke="#a855f7" strokeWidth="2" strokeDasharray="4 2" />
-          <text x={padL + 104} y={chartH - 5} fill="#94a3b8" fontSize="8">Obs</text>
+          <text x={padL + 104} y={chartH - 5} fill="var(--os-text-2)" fontSize="8">Obs</text>
         </svg>
       </div>
-      <p className="mt-2 text-[10px] text-slate-500">
+      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
         HYCOM vertical profile — {data.length} depth levels — {unit}
       </p>
     </div>

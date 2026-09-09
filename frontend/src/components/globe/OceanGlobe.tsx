@@ -20,11 +20,15 @@ export function OceanGlobe() {
   const initialCameraSetRef = useRef(false);
   const initialRegionNavigationHandledRef = useRef(false);
   const pendingFitTriggerRef = useRef<number | null>(null);
+  const reducedMotionRef = useRef(
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  );
 
   const { setSelectedLocation, selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedObservationId, selectedDate, setWorkspaceMode, fitAllObservationsTrigger } = useOceanStore();
   const [observations, setObservations] = useState<ObservationPoint[]>([]);
   const [observationsLoading, setObservationsLoading] = useState(true);
   const [viewerReady, setViewerReady] = useState(false);
+  const [sceneImageryReady, setSceneImageryReady] = useState(false);
 
   // Fetch real observation data from the API
   useEffect(() => {
@@ -130,6 +134,48 @@ export function OceanGlobe() {
       viewer.scene.skyAtmosphere.show = false;
     }
 
+    // Track when the geographic scene is USABLE — not when every tile has
+    // finished loading. Cesium may continue background tile refinement for
+    // tens of seconds. We need the scene ready in ~1-2 seconds.
+    //
+    // Strategy:
+    // 1. Primary: tileLoadProgressEvent reaches 0 (queue empty)
+    // 2. Fallback: 2500ms safety cap from viewer construction
+    // Either condition triggers sceneImageryReady.
+    let imageryReadyFired = false;
+    const viewerInitTime = Date.now();
+    const MAX_IMAGERY_WAIT_MS = 2500;
+
+    const markImageryReady = () => {
+      if (imageryReadyFired) return;
+      imageryReadyFired = true;
+      setSceneImageryReady(true);
+    };
+
+    // Primary signal: tile queue empties
+    let lastPendingTiles = -1;
+    const tileLoadListener = (pendingTileCount: number) => {
+      if (imageryReadyFired) return;
+      if (pendingTileCount === 0 && lastPendingTiles === 0) {
+        markImageryReady();
+      }
+      lastPendingTiles = pendingTileCount;
+    };
+    viewer.scene.globe.tileLoadProgressEvent.addEventListener(tileLoadListener);
+
+    // Fallback: time cap + at least one rendered frame.
+    // postRender fires after each frame is rendered, confirming the scene
+    // is actually drawing. Combined with the time cap, this ensures the
+    // veil disappears once the scene is both rendered and has had enough
+    // time for initial tiles to arrive.
+    const postRenderListener = () => {
+      if (imageryReadyFired) return;
+      if (Date.now() - viewerInitTime >= MAX_IMAGERY_WAIT_MS) {
+        markImageryReady();
+      }
+    };
+    viewer.scene.postRender.addEventListener(postRenderListener);
+
     // Click handler — consolidated: checks observation markers first,
     // then falls back to coordinate picking with snap-to-nearest.
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -200,9 +246,12 @@ export function OceanGlobe() {
 
     return () => {
       handler.destroy();
+      viewer.scene.globe.tileLoadProgressEvent.removeEventListener(tileLoadListener);
+      viewer.scene.postRender.removeEventListener(postRenderListener);
       viewer.destroy();
       viewerRef.current = null;
       setViewerReady(false);
+      setSceneImageryReady(false);
     };
   }, [handleCoordinateClick, selectResearchObservation, setWorkspaceMode]);
 
@@ -235,6 +284,51 @@ export function OceanGlobe() {
     const latitudePadding = Math.max((maxLatitude - minLatitude) * 0.12, 0.5);
     const longitudePadding = Math.max((maxLongitude - minLongitude) * 0.12, 0.5);
 
+    // Use setView (instant) instead of flyTo (animated) to avoid triggering
+    // expensive intermediate tile loading during camera animation.
+    viewer.camera.setView({
+      destination: Cesium.Rectangle.fromDegrees(
+        minLongitude - longitudePadding,
+        minLatitude - latitudePadding,
+        maxLongitude + longitudePadding,
+        maxLatitude + latitudePadding
+      ),
+    });
+    return true;
+  }, []);
+
+  // Smooth camera transition for user-triggered Fit Observations.
+  // Uses flyTo with a short duration. Respects prefers-reduced-motion.
+  const flyCameraToPoints = useCallback((sourceObservations: ObservationPoint[]) => {
+    const viewer = viewerRef.current;
+    if (!viewer) return false;
+
+    const allLocations = [
+      ...sourceObservations.map((observation) => ({
+        latitude: observation.latitude,
+        longitude: observation.longitude,
+      })),
+      ...RESEARCH_DATA_COVERAGE.map((coverage) => ({
+        latitude: coverage.latitude,
+        longitude: coverage.longitude,
+      })),
+    ].filter(({ latitude, longitude }) =>
+      Number.isFinite(latitude) && Number.isFinite(longitude) &&
+      latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
+    );
+
+    if (allLocations.length === 0) return false;
+
+    const latitudes = allLocations.map(({ latitude }) => latitude);
+    const longitudes = allLocations.map(({ longitude }) => longitude);
+    const minLatitude = Math.min(...latitudes);
+    const maxLatitude = Math.max(...latitudes);
+    const minLongitude = Math.min(...longitudes);
+    const maxLongitude = Math.max(...longitudes);
+    const latitudePadding = Math.max((maxLatitude - minLatitude) * 0.12, 0.5);
+    const longitudePadding = Math.max((maxLongitude - minLongitude) * 0.12, 0.5);
+
+    const duration = reducedMotionRef.current ? 0 : 1;
     viewer.camera.flyTo({
       destination: Cesium.Rectangle.fromDegrees(
         minLongitude - longitudePadding,
@@ -242,7 +336,7 @@ export function OceanGlobe() {
         maxLongitude + longitudePadding,
         maxLatitude + latitudePadding
       ),
-      duration: 1,
+      duration,
     });
     return true;
   }, []);
@@ -256,19 +350,20 @@ export function OceanGlobe() {
 
   // Fit only after the requested observation fetch has settled, so the fit
   // always uses the latest API coordinates plus the visible coverage sites.
+  // User-triggered fit uses flyTo for a smooth transition.
   useEffect(() => {
     if (fitAllObservationsTrigger === 0) return;
     pendingFitTriggerRef.current = fitAllObservationsTrigger;
-    if (!observationsLoading && fitCameraToPoints(observations)) {
+    if (!observationsLoading && flyCameraToPoints(observations)) {
       pendingFitTriggerRef.current = null;
     }
-  }, [fitAllObservationsTrigger, fitCameraToPoints, observations, observationsLoading]);
+  }, [fitAllObservationsTrigger, flyCameraToPoints, observations, observationsLoading]);
 
   // Complete a fit request that arrived while the API observations were loading.
   useEffect(() => {
     if (observationsLoading || pendingFitTriggerRef.current === null) return;
-    if (fitCameraToPoints(observations)) pendingFitTriggerRef.current = null;
-  }, [fitCameraToPoints, observations, observationsLoading]);
+    if (flyCameraToPoints(observations)) pendingFitTriggerRef.current = null;
+  }, [flyCameraToPoints, observations, observationsLoading]);
 
   // Preserve intentional region navigation without overriding the evidence-
   // driven initial camera for the default region.
@@ -278,6 +373,10 @@ export function OceanGlobe() {
       initialRegionNavigationHandledRef.current = true;
       return;
     }
+    // Do not fly to region until the initial camera has been set,
+    // otherwise this overrides the evidence-driven initial view.
+    if (!initialCameraSetRef.current) return;
+
     const viewer = viewerRef.current;
     const region = regions.find((candidate) => candidate.id === selectedRegion);
     if (!viewer || !region) return;
@@ -303,9 +402,10 @@ export function OceanGlobe() {
   }, [observations]);
 
   // Show observation points — API stations + research coverage locations
+  // Only show after both viewer AND imagery are ready
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || !sceneImageryReady) return;
 
     // Remove existing observation markers
     markersRef.current.forEach((entity) => viewer.entities.remove(entity));
@@ -333,13 +433,13 @@ export function OceanGlobe() {
         },
         label: {
           text: obs.id.replace('argo_', 'ARGO '),
-          font: '10px monospace',
+          font: '11px monospace',
           fillColor: Cesium.Color.WHITE.withAlpha(0.9),
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           outlineWidth: 2,
           outlineColor: Cesium.Color.BLACK,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -14),
+          pixelOffset: new Cesium.Cartesian2(0, -16),
           showBackground: true,
           backgroundColor: Cesium.Color.fromCssColorString('#0d1b3e').withAlpha(0.85),
           backgroundPadding: new Cesium.Cartesian2(4, 2),
@@ -374,13 +474,13 @@ export function OceanGlobe() {
         },
         label: {
           text: `${cov.latitude.toFixed(2)}°, ${cov.longitude.toFixed(2)}°`,
-          font: '9px monospace',
+          font: '10px monospace',
           fillColor: Cesium.Color.WHITE.withAlpha(0.7),
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           outlineWidth: 1,
           outlineColor: Cesium.Color.BLACK,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -12),
+          pixelOffset: new Cesium.Cartesian2(0, -13),
           showBackground: true,
           backgroundColor: Cesium.Color.fromCssColorString('#0d1b3e').withAlpha(0.7),
           backgroundPadding: new Cesium.Cartesian2(3, 1),
@@ -395,7 +495,7 @@ export function OceanGlobe() {
 
       markersRef.current.push(entity);
     });
-  }, [observations, selectedObservationId]);
+  }, [observations, selectedObservationId, sceneImageryReady]);
 
   // Show selected coordinate marker
   useEffect(() => {
@@ -445,8 +545,34 @@ export function OceanGlobe() {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+      
+      {/* Geographic context loading veil */}
+      {!sceneImageryReady && viewerReady && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+          style={{ 
+            background: 'rgba(8,12,22,0.7)',
+            transition: 'opacity 0.4s ease-out'
+          }}
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-[11px] tracking-wide uppercase text-[var(--os-text-3)]">
+              Preparing Geographic Context
+            </div>
+            <div className="w-16 h-0.5 bg-[var(--os-border)] overflow-hidden">
+              <div 
+                className="h-full bg-[var(--os-accent)]"
+                style={{
+                  animation: 'globe-loading-pulse 1.5s ease-in-out infinite'
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Globe overlay hint */}
-      <div className="absolute bottom-2 left-2 px-2 py-1 text-[8px] text-[var(--os-text-muted)]" style={{ background: 'rgba(8,12,22,0.85)' }}>
+      <div className="absolute bottom-2 left-2 px-2 py-1 text-[9px] text-[var(--os-text-muted)]" style={{ background: 'rgba(8,12,22,0.85)' }}>
         Click observation marker to select · Click near marker to snap
       </div>
     </div>

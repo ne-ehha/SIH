@@ -13,26 +13,26 @@ export function PossibleCauses({ diagnostic }: PossibleCausesProps) {
     { name: 'Bathymetry Resolution', confidence: 'low' as const },
   ];
 
-  const confidenceColor = {
-    low: 'text-yellow-400',
-    medium: 'text-orange-400',
-    high: 'text-green-400',
+  const confidenceColor: Record<string, string> = {
+    low: 'var(--os-diff-pos)',
+    medium: 'var(--os-diff-pos)',
+    high: 'var(--os-success)',
   };
 
   return (
     <div className="space-y-3">
-      <h4 className="text-xs font-semibold text-white">Possible Contributing Factors</h4>
+      <h4 className="text-[12px] font-semibold" style={{ color: 'var(--os-text)' }}>Possible Contributing Factors</h4>
       {causes.map((cause, i) => (
         <div
           key={i}
-          className={`flex items-center justify-between rounded-lg border p-2 ${
-            cause.name === diagnostic.possibleCause
-              ? 'border-cyan-800/50 bg-cyan-900/20'
-              : 'border-slate-800 bg-slate-900/20'
-          }`}
+          className="flex items-center justify-between rounded border p-2"
+          style={{
+            borderColor: cause.name === diagnostic.possibleCause ? 'rgba(34,211,238,0.3)' : 'var(--os-border)',
+            background: cause.name === diagnostic.possibleCause ? 'rgba(34,211,238,0.1)' : 'var(--os-surface)',
+          }}
         >
-          <span className="text-xs text-slate-300">{cause.name}</span>
-          <span className={`text-[10px] ${confidenceColor[cause.confidence]}`}>
+          <span className="text-[12px]" style={{ color: 'var(--os-text)' }}>{cause.name}</span>
+          <span className="text-[10px]" style={{ color: confidenceColor[cause.confidence] }}>
             {cause.confidence}
           </span>
         </div>

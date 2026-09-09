@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 48" fill="none">
+  <!-- Ocean-orbit mark -->
+  <circle cx="22" cy="24" r="18" stroke="#22d3ee" stroke-width="1.2" fill="none" opacity="0.6"/>
+  <ellipse cx="22" cy="24" rx="18" ry="7" stroke="#22d3ee" stroke-width="0.8" fill="none" opacity="0.35"/>
+  <ellipse cx="22" cy="24" rx="7" ry="18" stroke="#3b82c8" stroke-width="0.7" fill="none" opacity="0.25"/>
+  <!-- Inner dot -->
+  <circle cx="22" cy="24" r="2.5" fill="#22d3ee" opacity="0.9"/>
+  <circle cx="22" cy="24" r="1" fill="#080c16"/>
+  <!-- Wave accent -->
+  <path d="M10 28 Q16 22 22 28 Q28 34 34 28" stroke="#22d3ee" stroke-width="0.6" fill="none" opacity="0.4"/>
+
+  <!-- Wordmark: OceanScope -->
+  <text x="50" y="22" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#dce2ec" letter-spacing="0.5">OceanScope</text>
+
+  <!-- Tagline -->
+  <text x="50" y="36" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="7.5" fill="#6b768c" letter-spacing="1.5" text-transform="uppercase">SEE DEEPER. UNDERSTAND BETTER.</text>
+</svg>

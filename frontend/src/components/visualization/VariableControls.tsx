@@ -7,7 +7,7 @@ export function VariableControls() {
 
   return (
     <div>
-      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--os-text-muted)' }}>
         Variable
       </h4>
       <div className="space-y-1">
@@ -15,11 +15,12 @@ export function VariableControls() {
           <button
             key={v.id}
             onClick={() => setSelectedVariable(v.id as OceanVariable)}
-            className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition ${
-              selectedVariable === v.id
-                ? 'bg-purple-900/30 text-purple-300 ring-1 ring-purple-700/50'
-                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-            }`}
+            className="flex w-full items-center gap-2 px-2 py-1 text-[12px] transition"
+            style={{
+              color: selectedVariable === v.id ? 'var(--os-accent)' : 'var(--os-text-3)',
+              background: selectedVariable === v.id ? 'rgba(59,130,200,0.08)' : undefined,
+              borderLeft: selectedVariable === v.id ? '2px solid var(--os-accent)' : '2px solid transparent',
+            }}
           >
             <span
               className="h-3 w-3 rounded-sm"
@@ -28,7 +29,7 @@ export function VariableControls() {
               }}
             />
             {v.label}
-            <span className="ml-auto text-[10px] text-slate-600">{v.unit}</span>
+            <span className="ml-auto text-[10px]" style={{ color: 'var(--os-text-muted)' }}>{v.unit}</span>
           </button>
         ))}
       </div>

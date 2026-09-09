@@ -34,8 +34,8 @@ export function ModelHealthCard() {
   const strokeDashoffset = circumference - (health.score / 100) * circumference;
 
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4 shadow-xl backdrop-blur-md">
-      <h3 className="mb-3 text-sm font-semibold text-white">Model Health</h3>
+    <div className="panel p-4">
+      <h3 className="mb-3 text-[13px] font-semibold" style={{ color: 'var(--os-text)' }}>Model Health</h3>
       <div className="flex items-center gap-4">
         {/* Score circle */}
         <div className={`relative h-24 w-24 rounded-full border-2 ${scoreRing}`}>
@@ -45,7 +45,7 @@ export function ModelHealthCard() {
               cy="50"
               r="40"
               fill="none"
-              stroke="#1e293b"
+              stroke="var(--os-border)"
               strokeWidth="6"
             />
             <circle
@@ -63,7 +63,7 @@ export function ModelHealthCard() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className={`text-xl font-bold ${scoreColor}`}>{health.score}</span>
-            <span className="text-[8px] text-slate-500">/ 100</span>
+            <span className="text-[8px]" style={{ color: 'var(--os-text-muted)' }}>/ 100</span>
           </div>
         </div>
 
@@ -77,9 +77,9 @@ export function ModelHealthCard() {
                 ? 'bg-yellow-400'
                 : 'bg-red-400'
             }`} />
-            <span className="text-sm font-medium text-white capitalize">{health.status}</span>
+            <span className="text-[13px] font-medium capitalize" style={{ color: 'var(--os-text)' }}>{health.status}</span>
           </div>
-          <p className="mt-1 text-xs text-slate-400">{health.summary}</p>
+          <p className="mt-1 text-[12px]" style={{ color: 'var(--os-text-2)' }}>{health.summary}</p>
         </div>
       </div>
     </div>

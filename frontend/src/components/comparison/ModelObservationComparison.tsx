@@ -40,35 +40,36 @@ export function ModelObservationComparison() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Model vs Observation</h3>
-        <span className="text-[10px] text-slate-500">Real API data</span>
+        <h3 className="text-[13px] font-semibold" style={{ color: 'var(--os-text)' }}>Model vs Observation</h3>
+        <span className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>Real API data</span>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         <DifferenceCard
-          label="Model"
-          value={selectedMeasurement.glorysValue}
-          unit={unit}
-          color="cyan"
-        />
-        <DifferenceCard
-          label="Observed"
+          label="Argo"
           value={selectedMeasurement.argoValue}
           unit={unit}
-          color="purple"
+          color="argo"
         />
         <DifferenceCard
-          label="Difference"
+          label="GLORYS12V1"
+          value={selectedMeasurement.glorysValue}
+          unit={unit}
+          color="glorys"
+        />
+        <DifferenceCard
+          label="GLORYS − Argo"
           value={selectedMeasurement.difference}
           unit={unit}
-          color={selectedMeasurement.difference >= 0 ? 'green' : 'red'}
+          color={selectedMeasurement.difference >= 0 ? 'diff-pos' : 'diff-neg'}
           showSign
         />
       </div>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
-        <p className="text-[10px] text-slate-500">
-          GLORYS12V1 âˆ’ Argo at {selectedMeasurement.pressure.toFixed(1)} dbar (selected {selectedDepth}m)
+      <div className="rounded-lg border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+        <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>
+          Compared at <span className="mono" style={{ color: 'var(--os-text-2)' }}>{selectedMeasurement.pressure.toFixed(1)} dbar</span>
+          {' '}(slider set to {selectedDepth}m)
         </p>
       </div>
     </div>

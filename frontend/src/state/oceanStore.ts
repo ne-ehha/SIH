@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Location, OceanVariable, ViewMode, LayerConfig } from '@/types/ocean';
+import type { Location, OceanVariable, ViewMode, WorkspaceMode, LayerConfig } from '@/types/ocean';
 import { defaultRegion } from '@/config/regions';
 import { defaultVariable } from '@/config/variables';
 
@@ -14,6 +14,7 @@ interface OceanStore {
 
   // View state
   activeView: ViewMode;
+  workspaceMode: WorkspaceMode;
   selectedNav: string;
   isModelViewOpen: boolean;
   sidebarCollapsed: boolean;
@@ -27,6 +28,9 @@ interface OceanStore {
   // API state
   apiStatus: 'idle' | 'loading' | 'success' | 'error';
 
+  // Globe camera triggers
+  fitAllObservationsTrigger: number;
+
   // Actions
   setSelectedLocation: (location: Location | null) => void;
   setSelectedDepth: (depth: number) => void;
@@ -35,6 +39,7 @@ interface OceanStore {
   setSelectedTime: (time: string) => void;
   setSelectedRegion: (region: string) => void;
   setActiveView: (view: ViewMode) => void;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
   setSelectedNav: (nav: string) => void;
   setIsModelViewOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -43,6 +48,7 @@ interface OceanStore {
   selectResearchObservation: (selection: { id: string; location: Location; date: string }) => void;
   clearSelectedObservation: () => void;
   setApiStatus: (status: 'idle' | 'loading' | 'success' | 'error') => void;
+  triggerFitAllObservations: () => void;
   resetSelection: () => void;
 }
 
@@ -63,12 +69,14 @@ export const useOceanStore = create<OceanStore>((set) => ({
   selectedTime: '12:00',
   selectedRegion: defaultRegion.id,
   activeView: 'explore',
+  workspaceMode: 'globe',
   selectedNav: 'Explore',
   isModelViewOpen: false,
   sidebarCollapsed: false,
   activeLayers: defaultLayers,
   selectedObservationId: null,
   apiStatus: 'idle',
+  fitAllObservationsTrigger: 0,
 
   // Actions
   setSelectedLocation: (location) => set({ selectedLocation: location }),
@@ -79,6 +87,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
   setSelectedTime: (time) => set({ selectedTime: time }),
   setSelectedRegion: (region) => set({ selectedRegion: region }),
   setActiveView: (view) => set({ activeView: view }),
+  setWorkspaceMode: (mode) => set({ workspaceMode: mode }),
   setSelectedNav: (nav) => set({ selectedNav: nav }),
   setIsModelViewOpen: (open) => set({ isModelViewOpen: open }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -97,6 +106,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
   }),
   clearSelectedObservation: () => set({ selectedObservationId: null }),
   setApiStatus: (status) => set({ apiStatus: status }),
+  triggerFitAllObservations: () => set((state) => ({ fitAllObservationsTrigger: state.fitAllObservationsTrigger + 1 })),
   resetSelection: () =>
     set({
       selectedLocation: null,

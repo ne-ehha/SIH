@@ -3,11 +3,10 @@ interface EmptyStateProps {
   icon?: string;
 }
 
-export function EmptyState({ message = 'No data available', icon = '🌊' }: EmptyStateProps) {
+export function EmptyState({ message = 'No data available' }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-8">
-      <span className="text-3xl">{icon}</span>
-      <p className="text-sm text-slate-400">{message}</p>
+    <div className="flex flex-col items-center gap-2 py-6">
+      <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>{message}</p>
     </div>
   );
 }
