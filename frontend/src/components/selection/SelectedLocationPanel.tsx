@@ -2,9 +2,7 @@ import { useOceanStore } from '@/state/oceanStore';
 import { formatLatitude, formatLongitude, formatDepth } from '@/utils/coordinates';
 import { variables } from '@/config/variables';
 import { regions } from '@/config/regions';
-import { Button } from '@/components/common/Button';
 
-// HYCOM operational date range — 3D visualization is only available for these dates
 const HYCOM_DATE_START = '2026-08-26';
 const HYCOM_DATE_END = '2026-09-01';
 
@@ -20,92 +18,79 @@ export function SelectedLocationPanel() {
     selectedDate,
     selectedTime,
     selectedRegion,
-    isModelViewOpen,
     setIsModelViewOpen,
   } = useOceanStore();
 
   const variableInfo = variables.find((v) => v.id === selectedVariable);
   const regionInfo = regions.find((r) => r.id === selectedRegion);
-
   const hasSelection = selectedLocation !== null;
   const isHycom = isHycomDate(selectedDate);
 
+  // Parse observation context if available
+  const { selectedObservationId } = useOceanStore();
+
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-[#0d1224]/90 p-4 shadow-xl backdrop-blur-md">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Selected Location</h3>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-            hasSelection
-              ? 'bg-green-900/30 text-green-400'
-              : 'bg-slate-700/50 text-slate-500'
-          }`}
-        >
-          {hasSelection ? 'Ready' : 'No selection'}
+    <div className="bg-[var(--os-surface)] border border-[var(--os-border)] w-full">
+      {/* Header */}
+      <div className="px-2.5 py-1.5 border-b border-[var(--os-border)]">
+        <span className="text-[12px] font-semibold tracking-wide uppercase text-[var(--os-text-3)]">
+          {selectedObservationId ? 'Selected Observation' : 'Selected Location'}
         </span>
       </div>
 
-      <div className="space-y-2">
-        <InfoRow
-          label="Latitude"
-          value={hasSelection ? formatLatitude(selectedLocation.latitude) : '—'}
-          highlight={hasSelection}
-        />
-        <InfoRow
-          label="Longitude"
-          value={hasSelection ? formatLongitude(selectedLocation.longitude) : '—'}
-          highlight={hasSelection}
-        />
-        <InfoRow label="Depth" value={formatDepth(selectedDepth)} />
-        <InfoRow label="Variable" value={variableInfo?.label || '—'} />
-        <InfoRow label="Date" value={selectedDate || '—'} />
-        <InfoRow label="Time" value={selectedTime || '—'} />
-        <InfoRow label="Region" value={regionInfo?.name || '—'} />
+      {/* Observation ID */}
+      {selectedObservationId && (
+        <div className="px-2.5 py-2 border-b border-[var(--os-border)]">
+          <div className="mono text-[12px] text-[var(--os-argo)] font-medium">
+            {selectedObservationId.replace('argo_', '').replace('_', ' / Cycle ')}
+          </div>
+        </div>
+      )}
+
+      {/* Metadata rows */}
+      <div className="px-2.5 py-1.5">
+        <MetaRow label="Latitude" value={hasSelection ? formatLatitude(selectedLocation.latitude) : '—'} active={hasSelection} />
+        <MetaRow label="Longitude" value={hasSelection ? formatLongitude(selectedLocation.longitude) : '—'} active={hasSelection} />
+        <div className="border-t border-[var(--os-border)] my-0.5" />
+        <MetaRow label="Depth" value={formatDepth(selectedDepth)} />
+        <MetaRow label="Variable" value={variableInfo?.label || '—'} />
+        <MetaRow label="Date" value={selectedDate || '—'} mono />
+        <MetaRow label="Time" value={selectedTime ? `${selectedTime} UTC` : '—'} mono />
+        <MetaRow label="Region" value={regionInfo?.name || '—'} />
       </div>
 
-      <div className="mt-4 border-t border-slate-800 pt-3">
-        <Button
+      {/* Action */}
+      <div className="px-2.5 py-2 border-t border-[var(--os-border)]">
+        <button
           onClick={() => setIsModelViewOpen(true)}
           disabled={!hasSelection}
-          className="w-full"
+          className="w-full rounded-sm border border-[var(--os-border)] bg-[var(--os-bg)] px-3 py-1.5 text-[11px] text-[var(--os-text-2)] transition hover:border-[var(--os-border-light)] hover:text-[var(--os-text)] disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
           {isHycom ? 'View 3D Model' : 'View Research 3D'}
-        </Button>
-        {isHycom ? (
-          <p className="mt-1.5 text-center text-[9px] text-slate-600">
-            HYCOM operational visualization (Aug 26 - Sep 1, 2026)
-          </p>
-        ) : (
-          <p className="mt-1.5 text-center text-[9px] text-slate-600">
-            GLORYS × Argo collocated observations
-          </p>
-        )}
+        </button>
+        <p className="mt-1 text-center text-[9px] text-[var(--os-text-muted)]">
+          {isHycom ? 'HYCOM operational (Aug 26 – Sep 1, 2026)' : 'GLORYS × Argo collocated'}
+        </p>
       </div>
     </div>
   );
 }
 
-function InfoRow({
+function MetaRow({
   label,
   value,
-  highlight,
+  active,
+  mono,
 }: {
   label: string;
   value: string;
-  highlight?: boolean;
+  active?: boolean;
+  mono?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-[11px] text-slate-500">{label}</span>
-      <span
-        className={`text-xs font-medium ${
-          highlight ? 'text-purple-300' : 'text-slate-300'
-        }`}
-      >
+    <div className="flex items-baseline justify-between text-[11px] py-0.5">
+      <span className="text-[var(--os-text-muted)]">{label}</span>
+      <span className={`${mono ? 'mono' : ''} ${active ? 'text-[var(--os-argo)] font-medium' : 'text-[var(--os-text-2)]'}`}>
         {value}
       </span>
     </div>

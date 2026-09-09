@@ -4,36 +4,54 @@ import type { ObservationPoint } from '@/types/observation';
 import type { Location } from '@/types/ocean';
 import { useOceanStore } from '@/state/oceanStore';
 
+// Simple in-memory cache to avoid duplicate fetches when both
+// OceanGlobe and ObservationPoints mount simultaneously.
+const observationCache = new Map<string, Promise<ObservationPoint[]>>();
+
 export async function fetchObservations(
   _region: string,
   _bounds?: { north: number; south: number; east: number; west: number }
 ): Promise<ObservationPoint[]> {
   const { selectedDate } = useOceanStore.getState();
-  const provider = getProvider();
-  const response = await provider.fetchObservations({
-    region: _region,
-    bounds: _bounds,
-    date: selectedDate,
-  });
+  const cacheKey = `${_region}|${selectedDate}|${_bounds ? JSON.stringify(_bounds) : ''}`;
 
-  if (response.status === 'error') {
-    throw new Error(response.error || 'Failed to fetch observations');
-  }
+  // Return cached promise if available (deduplicates concurrent calls)
+  const cached = observationCache.get(cacheKey);
+  if (cached) return cached;
 
-  if (!response.data) return [];
+  const promise = (async () => {
+    const provider = getProvider();
+    const response = await provider.fetchObservations({
+      region: _region,
+      bounds: _bounds,
+      date: selectedDate,
+    });
 
-  // Map from INTEG1 ObservationDisplayPoint to legacy ObservationPoint
-  return response.data.stations.map((s) => ({
-    id: s.id,
-    latitude: s.latitude,
-    longitude: s.longitude,
-    timestamp: s.timestamp,
-    depth: s.depth,
-    status: s.status,
-    type: s.type,
-    temperature: s.temperature,
-    salinity: s.salinity,
-  }));
+    if (response.status === 'error') {
+      throw new Error(response.error || 'Failed to fetch observations');
+    }
+
+    if (!response.data) return [];
+
+    return response.data.stations.map((s) => ({
+      id: s.id,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      timestamp: s.timestamp,
+      depth: s.depth,
+      status: s.status,
+      type: s.type,
+      temperature: s.temperature,
+      salinity: s.salinity,
+    }));
+  })();
+
+  observationCache.set(cacheKey, promise);
+
+  // Evict cache entry after 30 seconds to allow fresh data on date changes
+  setTimeout(() => observationCache.delete(cacheKey), 30_000);
+
+  return promise;
 }
 
 export async function fetchObservationById(

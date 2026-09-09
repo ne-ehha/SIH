@@ -1,31 +1,72 @@
 @import "tailwindcss";
 
-/* Custom scrollbar */
+/* ── Viewport Lock ─────────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ── Scientific Color System ─────────────────────────────── */
+:root {
+  /* Workspace surfaces */
+  --os-bg:           #080c16;
+  --os-surface:      #0c1121;
+  --os-surface-2:    #101828;
+  --os-border:       #1a2236;
+  --os-border-light: #222d44;
+
+  /* Text hierarchy — Phase 12A readability
+     SCIENTIFIC READING > SECTION TITLE > SECONDARY META > TERTIARY */
+  --os-text:         #dce2ec;
+  --os-text-2:       #9aa5b8;
+  --os-text-3:       #6b768c;
+  --os-text-muted:   #4a5568;
+
+  /* Type scale (minimums for workstation UI) */
+  --os-type-reading: 16px;   /* primary scientific readings */
+  --os-type-title:   13px;   /* section / nav titles */
+  --os-type-meta:    12px;   /* secondary metadata */
+  --os-type-caption: 11px;   /* captions / axes */
+  --os-type-label:   10px;   /* tertiary labels only */
+
+  /* Scientific semantic */
+  --os-argo:         #22d3ee;
+  --os-glorys:       #a855f7;
+  --os-diff-pos:     #e8a63a;
+  --os-diff-neg:     #5b8def;
+  --os-selected:     #d4a843;
+  --os-accent:       #3b82c8;
+  --os-success:      #4a9e6e;
+}
+
+/* ── Custom Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0e1a;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 3px;
+  background: var(--os-border);
+  border-radius: 1px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--os-border-light);
 }
 
-/* Selection color */
+/* ── Selection ────────────────────────────────────────────── */
 ::selection {
-  background: rgba(6, 182, 212, 0.3);
+  background: rgba(59, 130, 200, 0.25);
   color: white;
 }
 
-/* Range input styling */
+/* ── Range Inputs ─────────────────────────────────────────── */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -34,25 +75,25 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-track {
-  height: 4px;
-  background: #1e293b;
-  border-radius: 2px;
+  height: 2px;
+  background: var(--os-border);
+  border-radius: 1px;
 }
 
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  height: 14px;
-  width: 14px;
-  border-radius: 50%;
-  background: #06b6d4;
-  margin-top: -5px;
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+  height: 10px;
+  width: 10px;
+  border-radius: 2px;
+  background: var(--os-accent);
+  margin-top: -4px;
+  border: none;
 }
 
-/* Cesium viewer overrides */
+/* ── Cesium Overrides ─────────────────────────────────────── */
 .cesium-viewer {
-  background-color: #0a0e1a !important;
+  background-color: var(--os-bg) !important;
 }
 
 .cesium-viewer-bottom {
@@ -63,29 +104,485 @@ input[type="range"]::-webkit-slider-thumb {
   display: none !important;
 }
 
-/* Glass panel effect */
-.glass-panel {
-  background: rgba(13, 18, 36, 0.9);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 41, 59, 0.5);
-}
-
-/* Smooth transitions */
+/* ── Global Scrollbar ─────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #1e293b #0a0e1a;
+  scrollbar-color: var(--os-border) transparent;
 }
 
-/* Animation for pulse */
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 0.4;
+/* ── Workstation Layout Grid ──────────────────────────────── */
+.workstation-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: auto 1fr;
+  height: 100dvh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--os-bg);
+}
+
+.workstation-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.workstation-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workstation-main {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workstation-status {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+/* ── Sidebar Transitions ──────────────────────────────────── */
+.sidebar-rail {
+  transition: width 150ms ease;
+  will-change: width;
+}
+
+/* ── Panel Base — Scientific ──────────────────────────────── */
+.panel {
+  border: 1px solid var(--os-border);
+  background: var(--os-surface);
+  border-radius: 2px;
+}
+
+.panel-header {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--os-border);
+  font-size: var(--os-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--os-text-2);
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+/* ── Section Separator (for sidebar) ──────────────────────── */
+.section-sep {
+  height: 1px;
+  background: var(--os-border);
+  margin: 0;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--os-text-2);
+  padding: 8px 10px 3px;
+}
+
+/* ── Compact Table ────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  font-size: 10px;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  padding: 4px 8px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--os-text-3);
+  border-bottom: 1px solid var(--os-border);
+  background: var(--os-surface);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--os-border);
+}
+
+.data-table tr:hover td {
+  background: var(--os-surface-2);
+}
+
+/* ── Mono Values ──────────────────────────────────────────── */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.os-reading {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--os-type-reading);
+  color: var(--os-text);
+  font-weight: 500;
+}
+
+.os-title {
+  font-size: var(--os-type-title);
+  font-weight: 600;
+  color: var(--os-text);
+}
+
+.os-meta {
+  font-size: var(--os-type-meta);
+  color: var(--os-text-2);
+}
+
+.os-caption {
+  font-size: var(--os-type-caption);
+  color: var(--os-text-3);
+}
+
+/* ── Scientific Evidence Row ────────────────────────────── */
+.evidence-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--os-border);
+}
+
+.evidence-row:last-child {
+  border-bottom: none;
+}
+
+.evidence-row .evidence-label {
+  flex-shrink: 0;
+  width: 80px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--os-text-3);
+}
+
+.evidence-row .evidence-source {
+  flex-shrink: 0;
+  width: 96px;
+  font-size: 10px;
+  color: var(--os-text-2);
+}
+
+.evidence-row .evidence-value {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--os-text);
+}
+
+/* ── Investigation Context Strip ──────────────────────────── */
+.investigation-strip {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 12px;
+  background: var(--os-surface);
+  border-bottom: 1px solid var(--os-border);
+  font-size: var(--os-type-meta);
+  min-height: 32px;
+  flex-shrink: 0;
+}
+
+.investigation-strip .inv-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.investigation-strip .inv-group:first-child {
+  padding-left: 0;
+}
+
+.investigation-strip .inv-purpose {
+  font-size: var(--os-type-caption);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text);
+  white-space: nowrap;
+  transition: color 150ms ease;
+}
+
+.investigation-strip .inv-purpose-sep {
+  margin: 0 0.35em;
+  color: var(--os-text-3);
+  font-weight: 500;
+}
+
+.investigation-strip .inv-label {
+  font-size: var(--os-type-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text-3);
+}
+
+.investigation-strip .inv-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--os-border);
+  flex-shrink: 0;
+}
+
+.investigation-strip .inv-value {
+  color: var(--os-text-2);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--os-type-meta);
+}
+
+.investigation-strip .inv-highlight {
+  color: var(--os-argo);
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--os-type-meta);
+}
+
+.investigation-strip .inv-context {
+  color: var(--os-text-2);
+  font-size: var(--os-type-caption);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.investigation-strip .inv-meta-inline {
+  color: var(--os-text-3);
+  font-weight: 400;
+}
+
+/* ── Workspace Tab Indicator ──────────────────────────────── */
+.workspace-tab {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.workspace-tab:hover {
+  background-color: rgba(59, 130, 200, 0.04);
+}
+
+.workspace-tab-active {
+  position: relative;
+  background-color: rgba(59, 130, 200, 0.06);
+}
+
+.workspace-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--os-accent);
+}
+
+/* ── Research Sub-Tab Transition ────────────────────────── */
+/*
+ * Subtle entrance when switching between Inspector / Comparison /
+ * Profiles / Observations tabs within the Research workspace.
+ * 150ms fade-in, consistent with the main workspace transition.
+ */
+@keyframes subtab-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.subtab-enter {
+  animation: subtab-enter 150ms ease-out both;
+}
+
+/* ── Research Scientific Readability ──────────────────────── */
+.research-sci-value {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--os-type-reading);
+  font-weight: 600;
+  color: var(--os-text);
+  line-height: 1.2;
+}
+
+.research-sci-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text-3);
+}
+
+.research-depth-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--os-border);
+  background: var(--os-surface);
+  border-radius: 2px;
+}
+
+.research-depth-badge .depth-value {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--os-text);
+}
+
+.research-depth-badge .depth-unit {
+  font-size: var(--os-type-caption);
+  color: var(--os-text-3);
+  font-weight: 500;
+}
+
+.research-evidence-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.research-evidence-row .evidence-source {
+  flex-shrink: 0;
+  width: 88px;
+  font-size: var(--os-type-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.research-evidence-row .evidence-value {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--os-type-reading);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.research-evidence-row .evidence-unit {
+  font-size: var(--os-type-caption);
+  color: var(--os-text-3);
+}
+
+.research-evidence-row .evidence-diff-label {
+  font-size: var(--os-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+
+/* ── Report Scientific Readability ──────────────────────── */
+.report-sci-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text-3);
+}
+
+.report-sci-value {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--os-text);
+  line-height: 1.2;
+}
+
+.report-diff-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 6px;
+}
+
+/* ── Globe Loading Animation ─────────────────────────────── */
+@keyframes globe-loading-pulse {
+  0% {
+    transform: translateX(-100%);
   }
-  50% {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ── Workspace Settle ──────────────────────────────────────── */
+/*
+ * Subtle positional settle on incoming workspace content.
+ * No opacity animation — content appears immediately at full
+ * visibility. The tiny Y translate creates a calm "settling"
+ * feel without any blank frame.
+ *
+ * 150ms, 4px translate — barely perceptible but prevents the
+ * jarring instant-swap feeling.
+ */
+@keyframes ws-settle {
+  from { transform: translateY(3px); }
+  to   { transform: translateY(0); }
+}
+
+.ws-settle {
+  animation: ws-settle 150ms ease-out both;
+}
+
+/* ── Investigation Context Strip Purpose Transition ──────── */
+/*
+ * When the workspace purpose label changes (e.g. DISCOVER → INSPECT),
+ * the new label fades in over 200ms. Achieved via a key prop that
+ * forces React remount on workspace change.
+ */
+@keyframes purpose-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.inv-purpose-enter {
+  animation: purpose-fade-in 200ms ease-out both;
+}
+
+/* ── Reduced Motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .ws-settle {
+    animation: none;
+  }
+
+  .subtab-enter {
+    animation: none;
     opacity: 1;
   }
-}
 
-.animate-pulse-slow {
-  animation: pulse-slow 2s ease-in-out infinite;
+  .inv-purpose-enter {
+    animation: none;
+    opacity: 1;
+  }
+
+  .workspace-tab {
+    transition: none;
+  }
+
+  .sidebar-rail {
+    transition: none;
+  }
+
+  .investigation-strip .inv-purpose {
+    transition: none;
+  }
 }

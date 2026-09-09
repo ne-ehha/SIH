@@ -7,6 +7,8 @@ export type OceanVariable = 'temperature' | 'salinity' | 'currents_u' | 'current
 
 export type ViewMode = 'explore' | 'compare' | 'discrepancies' | 'diagnostics' | 'solutions' | 'reports';
 
+export type WorkspaceMode = 'globe' | 'research' | 'analysis' | 'solutions' | 'report';
+
 export interface LayerConfig {
   id: string;
   label: string;

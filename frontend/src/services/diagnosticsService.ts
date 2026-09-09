@@ -41,7 +41,19 @@ export async function runDiagnostics(
     lastDiagnosticId = response.data.id;
   }
 
-  return adapted;
+  return {
+    id: adapted.id,
+    possibleCause: adapted.possibleCause,
+    confidence: adapted.confidence,
+    evidence: adapted.evidence,
+    status: adapted.status as DiagnosticResult['status'],
+    errorFingerprint: adapted.errorFingerprint,
+    allCauses: adapted.allCauses.map((c) => ({
+      name: c.name,
+      confidence: c.confidence,
+      evidence: c.evidence,
+    })),
+  };
 }
 
 export async function getWorkflowSteps(

@@ -9,10 +9,10 @@ export function RegionView() {
 
   return (
     <div className="pointer-events-none absolute bottom-4 right-4 z-10">
-      <div className="rounded-lg border border-slate-700/50 bg-[#0d1224]/80 px-3 py-2 backdrop-blur-md">
-        <p className="text-[10px] text-slate-500">Current Region</p>
-        <p className="text-sm font-medium text-cyan-300">{region.name}</p>
-        <p className="text-[10px] text-slate-600">
+      <div className="border px-3 py-2" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+        <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>Current Region</p>
+        <p className="text-[13px] font-medium" style={{ color: 'var(--os-argo)' }}>{region.name}</p>
+        <p className="text-[10px]" style={{ color: 'var(--os-text-muted)' }}>
           {region.bounds.south}°S – {region.bounds.north}°N,{' '}
           {region.bounds.west}°W – {region.bounds.east}°E
         </p>

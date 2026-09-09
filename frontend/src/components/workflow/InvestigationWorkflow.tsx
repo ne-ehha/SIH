@@ -1,13 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
-import { getWorkflowSteps, getRecommendations } from '@/services/diagnosticsService';
+import { runDiagnostics, getWorkflowSteps, getRecommendations } from '@/services/diagnosticsService';
 import type { WorkflowStep, SolutionRecommendation } from '@/types/diagnostics';
-import { LoadingState } from '@/components/common/LoadingState';
-import { EmptyState } from '@/components/common/EmptyState';
-import { ErrorState } from '@/components/common/ErrorState';
 
 export function InvestigationWorkflow() {
-  const { selectedLocation } = useOceanStore();
+  const { selectedLocation, selectedVariable, selectedDepth } = useOceanStore();
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [solution, setSolution] = useState<SolutionRecommendation | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,6 +15,9 @@ export function InvestigationWorkflow() {
     setLoading(true);
     setError(null);
     try {
+      // First: run diagnostics to ensure we have a diagnostic ID
+      await runDiagnostics(selectedLocation, selectedVariable, selectedDepth);
+      // Then: fetch workflow steps and recommendations using the cached ID
       const [workflowSteps, sol] = await Promise.all([
         getWorkflowSteps(),
         getRecommendations(),
@@ -35,20 +35,48 @@ export function InvestigationWorkflow() {
     if (selectedLocation) {
       loadData();
     }
-  }, [selectedLocation]);
+  }, [selectedLocation, selectedVariable, selectedDepth]);
 
   if (!selectedLocation) {
-    return <EmptyState message="Select a location to view investigation workflow" icon="🔬" />;
+    return (
+      <div className="panel">
+        <div className="panel-header">Investigation Workflow</div>
+        <div className="p-3 text-center text-[10px] py-6" style={{ color: 'var(--os-text-3)' }}>Select a location to view workflow</div>
+      </div>
+    );
   }
 
-  if (loading) return <LoadingState message="Loading workflow..." />;
-  if (error) return <ErrorState message={error} onRetry={loadData} />;
+  if (loading) {
+    return (
+      <div className="panel">
+        <div className="panel-header">Investigation Workflow</div>
+        <div className="flex items-center justify-center py-6">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-[1.5px] border-t-transparent" style={{ borderColor: 'var(--os-argo)', borderTopColor: 'transparent' }} />
+            <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>Loading workflow...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const statusStyles = {
-    inactive: 'border-slate-700 bg-slate-900/30 text-slate-500',
-    active: 'border-cyan-700 bg-cyan-900/30 text-cyan-300 ring-1 ring-cyan-700/40',
-    complete: 'border-green-700 bg-green-900/20 text-green-400',
-    loading: 'border-amber-700 bg-amber-900/20 text-amber-400',
+  if (error) {
+    return (
+      <div className="panel">
+        <div className="panel-header">Investigation Workflow</div>
+        <div className="p-3 text-center">
+          <p className="text-[10px]" style={{ color: '#ef4444' }}>{error}</p>
+          <button onClick={loadData} className="mt-2 text-[10px]" style={{ color: 'var(--os-accent)' }}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  const statusStyles: Record<string, { borderColor: string; color: string }> = {
+    inactive: { borderColor: 'var(--os-border)', color: 'var(--os-text-3)' },
+    active: { borderColor: 'var(--os-accent)', color: 'var(--os-accent)' },
+    complete: { borderColor: 'var(--os-success)', color: 'var(--os-success)' },
+    loading: { borderColor: 'var(--os-diff-pos)', color: 'var(--os-diff-pos)' },
   };
 
   const statusIcons: Record<string, string> = {
@@ -59,47 +87,41 @@ export function InvestigationWorkflow() {
   };
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-sm font-semibold text-white">Investigation Workflow</h3>
-
-      {/* Step cards */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {steps.map((step, i) => (
-          <div key={step.id} className="flex items-center gap-2">
-            <div className={`min-w-[140px] rounded-lg border p-3 ${statusStyles[step.status]}`}>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{statusIcons[step.status]}</span>
-                <span className="text-sm font-medium">{step.title}</span>
+    <div className="panel">
+      <div className="panel-header">Investigation Workflow</div>
+      <div className="p-3 space-y-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {steps.map((step, i) => (
+            <div key={step.id} className="flex items-center gap-1.5">
+              <div className="min-w-[120px] border px-2.5 py-2" style={statusStyles[step.status]}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px]">{statusIcons[step.status]}</span>
+                  <span className="text-[11px] font-medium">{step.title}</span>
+                </div>
+                <p className="mt-0.5 text-[9px] opacity-70">{step.description}</p>
               </div>
-              <p className="mt-1 text-[10px] opacity-70">{step.description}</p>
+              {i < steps.length - 1 && (
+                <span className="text-[10px]" style={{ color: 'var(--os-border-light)' }}>→</span>
+              )}
             </div>
-            {i < steps.length - 1 && (
-              <span className="text-slate-600">→</span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Solution card */}
-      {solution && (
-        <div className="rounded-lg border border-purple-800/50 bg-purple-900/20 p-4">
-          <h4 className="text-sm font-medium text-purple-300">Recommended Investigation</h4>
-          <div className="mt-2 space-y-2">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">Recommended Test</p>
-              <p className="text-xs text-slate-300">{solution.recommendedTest}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">Expected Outcome</p>
-              <p className="text-xs text-slate-300">{solution.expectedOutcome}</p>
-            </div>
-            <div className="rounded border border-amber-800/50 bg-amber-900/20 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-amber-500">Caution</p>
-              <p className="text-[11px] text-amber-300/80 italic">{solution.caution}</p>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
+
+        {solution && (
+          <div className="border p-3 space-y-2" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+            <p className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--os-accent)' }}>Recommended Investigation</p>
+            <p className="text-[11px]" style={{ color: 'var(--os-text)' }}>{solution.recommendedTest}</p>
+            <div className="border-t pt-2" style={{ borderColor: 'var(--os-border)' }}>
+              <p className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--os-text-muted)' }}>Expected Outcome</p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--os-text-2)' }}>{solution.expectedOutcome}</p>
+            </div>
+            <div className="border p-2" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+              <p className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--os-diff-pos)' }}>Caution</p>
+              <p className="text-[10px] italic mt-0.5" style={{ color: 'var(--os-text-2)' }}>{solution.caution}</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

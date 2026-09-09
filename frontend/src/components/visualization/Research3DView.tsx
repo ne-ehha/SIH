@@ -51,25 +51,26 @@ export function Research3DView() {
   if (!isModelViewOpen || !selectedLocation) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="mx-4 flex h-[90vh] w-full max-w-6xl flex-col rounded-2xl border border-slate-700/50 bg-[#0a0e1a] shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(8,12,22,0.85)' }}>
+      <div className="mx-4 flex h-[90vh] w-full max-w-6xl flex-col border" style={{ borderColor: 'var(--os-border)', background: 'var(--os-bg)' }}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+        <div className="flex items-center justify-between border-b px-6 py-4" style={{ borderColor: 'var(--os-border)' }}>
           <div>
-            <h2 className="text-lg font-semibold text-white">Research 3D — GLORYS × Argo</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-[15px] font-semibold" style={{ color: 'var(--os-text)' }}>Research 3D — GLORYS × Argo</h2>
+            <p className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>
               {selectedLocation.latitude.toFixed(2)}° {selectedLocation.latitude >= 0 ? 'N' : 'S'},{' '}
               {selectedLocation.longitude.toFixed(2)}° {selectedLocation.longitude >= 0 ? 'E' : 'W'}
-              {unit && <span className="ml-2 text-cyan-400">• {selectedVariable} ({unit})</span>}
-              <span className="ml-2 text-purple-400">• {selectedDate}</span>
+              {unit && <span className="ml-2" style={{ color: 'var(--os-argo)' }}>• {selectedVariable} ({unit})</span>}
+              <span className="ml-2" style={{ color: 'var(--os-glorys)' }}>• {selectedDate}</span>
             </p>
-            <p className="mt-0.5 text-[10px] text-slate-600">
+            <p className="mt-0.5 text-[10px]" style={{ color: 'var(--os-text-muted)' }}>
               Real GLORYS12V1 × Argo Delayed Mode collocated observations — not a gridded model
             </p>
           </div>
           <button
             onClick={() => setIsModelViewOpen(false)}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+            className="p-2 transition"
+            style={{ color: 'var(--os-text-3)' }}
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
@@ -80,23 +81,23 @@ export function Research3DView() {
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar: stats + legend */}
-          <div className="w-72 border-r border-slate-800 p-4 overflow-y-auto space-y-4">
+          <div className="w-72 border-r p-4 overflow-y-auto space-y-4" style={{ borderColor: 'var(--os-border)' }}>
             {stats && (
               <>
-                <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
-                  <h4 className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Dataset Summary</h4>
+                <div className="border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+                  <h4 className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--os-text-muted)' }}>Dataset Summary</h4>
                   <div className="space-y-1.5 text-[11px]">
                     <Row label="Total points" value={String(stats.totalPoints)} />
-                    <Row label="Argo mean" value={`${stats.argoMean.toFixed(2)} ${unit}`} />
-                    <Row label="GLORYS mean" value={`${stats.glorysMean.toFixed(2)} ${unit}`} />
-                    <Row label="Mean difference" value={`${stats.meanDifference > 0 ? '+' : ''}${stats.meanDifference.toFixed(4)} ${unit}`} color={Math.abs(stats.meanDifference) < 0.5 ? 'text-green-400' : 'text-amber-400'} />
+                    <Row label="Argo mean" value={`${stats.argoMean.toFixed(2)} ${unit}`} color="var(--os-argo)" />
+                    <Row label="GLORYS mean" value={`${stats.glorysMean.toFixed(2)} ${unit}`} color="var(--os-glorys)" />
+                    <Row label="Mean difference" value={`${stats.meanDifference > 0 ? '+' : ''}${stats.meanDifference.toFixed(4)} ${unit}`} color={stats.meanDifference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'} />
                     <Row label="RMS difference" value={`${stats.rmsDifference.toFixed(4)} ${unit}`} />
                     <Row label="Max |difference|" value={`${stats.maxDifference.toFixed(4)} ${unit}`} />
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
-                  <h4 className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Coverage</h4>
+                <div className="border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+                  <h4 className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--os-text-muted)' }}>Coverage</h4>
                   <div className="space-y-1.5 text-[11px]">
                     <Row label="Depth range" value={`${stats.depthRange[0]}–${stats.depthRange[1]} dbar`} />
                     <Row label="Lat range" value={`${stats.spatialBounds.south}–${stats.spatialBounds.north}°N`} />
@@ -106,29 +107,31 @@ export function Research3DView() {
               </>
             )}
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-3">
-              <h4 className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Legend</h4>
+            <div className="border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+              <h4 className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--os-text-muted)' }}>Legend</h4>
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                  <span className="text-slate-400">Argo observation</span>
+                  <span className="h-2 w-2 rounded-full" style={{ background: 'var(--os-argo)' }} />
+                  <span style={{ color: 'var(--os-text-2)' }}>Argo observation</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-purple-400" />
-                  <span className="text-slate-400">GLORYS model</span>
+                  <span className="h-2 w-2 rounded-full" style={{ background: 'var(--os-glorys)' }} />
+                  <span style={{ color: 'var(--os-text-2)' }}>GLORYS model</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-slate-400">Difference / error</span>
+                  <span className="h-2 w-2 rounded-full" style={{ background: 'var(--os-diff-pos)' }} />
+                  <span style={{ color: 'var(--os-text-2)' }}>Positive diff (model high)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full" style={{ background: 'var(--os-diff-neg)' }} />
+                  <span style={{ color: 'var(--os-text-2)' }}>Negative diff (model low)</span>
                 </div>
               </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-800/50 bg-slate-900/20 p-3">
-              <p className="text-[10px] text-slate-500 italic">
+            </div>              <div className="border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+              <p className="text-[10px] italic" style={{ color: 'var(--os-text-3)' }}>
                 Source: GLORYS12V1 × Argo Delayed Mode collocation
               </p>
-              <p className="text-[10px] text-slate-600 mt-1">
+              <p className="text-[10px] mt-1" style={{ color: 'var(--os-text-muted)' }}>
                 {points.length} real observation points for {selectedDate}
               </p>
             </div>
@@ -136,7 +139,7 @@ export function Research3DView() {
 
           {/* Main visualization */}
           <div className="flex-1 relative overflow-hidden">
-            <div className="h-full w-full bg-gradient-to-b from-[#0d1b3e] to-[#0a0e1a] overflow-y-auto p-6">
+            <div className="h-full w-full overflow-y-auto p-6" style={{ background: 'var(--os-bg)' }}>
               {loading && (
                 <div className="flex h-full items-center justify-center">
                   <LoadingState message="Loading Research visualization data..." />
@@ -149,15 +152,15 @@ export function Research3DView() {
               )}
               {!loading && !error && points.length === 0 && (
                 <div className="flex h-full items-center justify-center">
-                  <p className="text-sm text-slate-500">No collocation observations for this date</p>
+                  <p className="text-[13px]" style={{ color: 'var(--os-text-3)' }}>No collocation observations for this date</p>
                 </div>
               )}
               {!loading && !error && points.length > 0 && (
                 <div className="space-y-8">
                   {/* 3D Depth Inspector (R3F Canvas) */}
                   <div>
-                    <h3 className="mb-2 text-sm font-medium text-slate-300">3D Depth Inspector</h3>
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/30" style={{ height: '400px' }}>
+                    <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>3D Depth Inspector</h3>
+                    <div className="border" style={{ height: '400px', borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
                       <DepthInspectorScene
                         className="h-full w-full"
                         profilePoints={selectedProfilePoints}
@@ -168,7 +171,7 @@ export function Research3DView() {
                     </div>
                     {/* Depth slider */}
                     <div className="mt-3 flex items-center gap-3">
-                      <label className="text-[10px] text-slate-500 whitespace-nowrap">Depth</label>
+                      <label className="text-[10px] whitespace-nowrap" style={{ color: 'var(--os-text-3)' }}>Depth</label>
                       <input
                         type="range"
                         min={0}
@@ -176,22 +179,22 @@ export function Research3DView() {
                         step={1}
                         value={selectedDepth}
                         onChange={(e) => setSelectedDepth(Number(e.target.value))}
-                        className="flex-1 h-1 appearance-none bg-slate-700 rounded cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
+                        className="flex-1"
                       />
-                      <span className="text-[11px] text-cyan-400 font-mono w-12 text-right">{selectedDepth}m</span>
+                      <span className="text-[11px] font-mono w-12 text-right" style={{ color: 'var(--os-argo)' }}>{selectedDepth}m</span>
                     </div>
                     {selectedProfilePoints.length > 0 && (
-                      <p className="mt-2 text-[10px] text-slate-500">
+                      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
                         {selectedProfilePoints.length} depth records — Platform {selectedProfilePoints[0].platformNumber}, Cycle {selectedProfilePoints[0].cycleNumber}
                       </p>
                     )}
                     {selectedObservationId && selectedProfilePoints.length === 0 && !loading && (
-                      <p className="mt-2 text-[10px] text-amber-500">
+                      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-diff-pos)' }}>
                         No matching profile found for {selectedObservationId} on {selectedDate}
                       </p>
                     )}
                     {!selectedObservationId && (
-                      <p className="mt-2 text-[10px] text-slate-500">
+                      <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
                         Click an Argo observation marker on the globe to view its profile in 3D
                       </p>
                     )}
@@ -243,7 +246,7 @@ export function Research3DView() {
                     onSelectPoint={setSelectedPoint}
                   />
                   {selectedProfilePoints.length > 20 && (
-                    <p className="text-[10px] text-slate-600 text-center">
+                    <p className="text-[10px] text-center" style={{ color: 'var(--os-text-muted)' }}>
                       Showing 20 of {selectedProfilePoints.length} profile observations
                     </p>
                   )}
@@ -262,8 +265,8 @@ export function Research3DView() {
 function Row({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-medium ${color || 'text-slate-300'}`}>{value}</span>
+      <span style={{ color: 'var(--os-text-3)' }}>{label}</span>
+      <span className="font-medium" style={{ color: color || 'var(--os-text-2)' }}>{value}</span>
     </div>
   );
 }
@@ -273,18 +276,18 @@ function SelectedPointDetail({ point, unit, onClose }: { point: Research3DPoint;
     <div className="rounded-lg border border-cyan-800/50 bg-cyan-900/20 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-cyan-300">Selected Observation</h3>
-        <button onClick={onClose} className="text-slate-500 hover:text-white text-xs">Close</button>
+        <button onClick={onClose} className="text-xs" style={{ color: 'var(--os-text-3)' }}>Close</button>
       </div>
-      <div className="grid grid-cols-4 gap-3 text-[11px]">
-        <div><span className="text-slate-500">Latitude</span><p className="text-white">{point.latitude.toFixed(4)}°N</p></div>
-        <div><span className="text-slate-500">Longitude</span><p className="text-white">{point.longitude.toFixed(4)}°E</p></div>
-        <div><span className="text-slate-500">Depth</span><p className="text-white">{point.pressure.toFixed(1)} dbar</p></div>
-        <div><span className="text-slate-500">Timestamp</span><p className="text-white">{point.timestamp}</p></div>
-        <div><span className="text-slate-500">Argo</span><p className="text-purple-300">{point.argoValue.toFixed(2)} {unit}</p></div>
-        <div><span className="text-slate-500">GLORYS</span><p className="text-cyan-300">{point.glorysValue.toFixed(2)} {unit}</p></div>
-        <div><span className="text-slate-500">Difference</span><p className={point.difference >= 0 ? 'text-amber-300' : 'text-blue-300'}>{point.difference > 0 ? '+' : ''}{point.difference.toFixed(4)} {unit}</p></div>
-        <div><span className="text-slate-500">Platform</span><p className="text-white">{point.platformNumber} / Cycle {point.cycleNumber}</p></div>
-      </div>
+        <div className="grid grid-cols-4 gap-3 text-[11px]">
+          <div><span style={{ color: 'var(--os-text-3)' }}>Latitude</span><p style={{ color: 'var(--os-text)' }}>{point.latitude.toFixed(4)}°N</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Longitude</span><p style={{ color: 'var(--os-text)' }}>{point.longitude.toFixed(4)}°E</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Depth</span><p style={{ color: 'var(--os-text)' }}>{point.pressure.toFixed(1)} dbar</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Timestamp</span><p style={{ color: 'var(--os-text)' }}>{point.timestamp}</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Argo</span><p style={{ color: 'var(--os-argo)' }}>{point.argoValue.toFixed(2)} {unit}</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>GLORYS</span><p style={{ color: 'var(--os-glorys)' }}>{point.glorysValue.toFixed(2)} {unit}</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Difference</span><p style={{ color: point.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}>{point.difference > 0 ? '+' : ''}{point.difference.toFixed(4)} {unit}</p></div>
+          <div><span style={{ color: 'var(--os-text-3)' }}>Platform</span><p style={{ color: 'var(--os-text)' }}>{point.platformNumber} / Cycle {point.cycleNumber}</p></div>
+        </div>
     </div>
   );
 }
@@ -348,8 +351,8 @@ function ScatterPlot({
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">{title}</h3>
-      <div className="inline-block rounded-lg border border-slate-800 bg-slate-900/30 p-4">
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>{title}</h3>
+      <div className="inline-block border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ maxWidth: '600px' }}>
           {/* Grid */}
           {Array.from({ length: xTicks + 1 }, (_, i) => {
@@ -357,8 +360,8 @@ function ScatterPlot({
             const val = xMin + (i / xTicks) * (xMax - xMin);
             return (
               <g key={`x${i}`}>
-                <line x1={x} y1={padT} x2={x} y2={chartH - padB} stroke="#1e293b" strokeWidth="0.5" />
-                <text x={x} y={chartH - padB + 14} textAnchor="middle" fill="#64748b" fontSize="8">
+                <line x1={x} y1={padT} x2={x} y2={chartH - padB} stroke="var(--os-border)" strokeWidth="0.5" />
+                <text x={x} y={chartH - padB + 14} textAnchor="middle" fill="var(--os-text-3)" fontSize="8">
                   {val.toFixed(1)}
                 </text>
               </g>
@@ -369,8 +372,8 @@ function ScatterPlot({
             const val = (i / yTicks) * yMax;
             return (
               <g key={`y${i}`}>
-                <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke="#1e293b" strokeWidth="0.5" />
-                <text x={padL - 5} y={y + 3} textAnchor="end" fill="#64748b" fontSize="8">
+                <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke="var(--os-border)" strokeWidth="0.5" />
+                <text x={padL - 5} y={y + 3} textAnchor="end" fill="var(--os-text-3)" fontSize="8">
                   {val.toFixed(0)}
                 </text>
               </g>
@@ -378,10 +381,10 @@ function ScatterPlot({
           })}
 
           {/* Axes labels */}
-          <text x={padL + plotW / 2} y={chartH - 5} textAnchor="middle" fill="#94a3b8" fontSize="9">
+          <text x={padL + plotW / 2} y={chartH - 5} textAnchor="middle" fill="var(--os-text-2)" fontSize="9">
             {xLabel}
           </text>
-          <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="#94a3b8" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>
+          <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="var(--os-text-2)" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>
             {yLabel}
           </text>
 
@@ -415,10 +418,9 @@ function ScatterPlot({
             </linearGradient>
           </defs>
           <rect x={padL} y={chartH - 18} width={plotW} height={6} rx={3} fill={`url(#grad-${xAxis})`} opacity={0.6} />
-          <text x={padL} y={chartH - 22} fill="#64748b" fontSize="7">{minVal.toFixed(1)}</text>
-          <text x={padL + plotW} y={chartH - 22} textAnchor="end" fill="#64748b" fontSize="7">{maxVal.toFixed(1)} {unit}</text>
-        </svg>
-        <p className="mt-2 text-[10px] text-slate-500">
+          <text x={padL} y={chartH - 22} fill="var(--os-text-3)" fontSize="7">{minVal.toFixed(1)}</text>
+          <text x={padL + plotW} y={chartH - 22} textAnchor="end" fill="var(--os-text-3)" fontSize="7">{maxVal.toFixed(1)} {unit}</text>
+        </svg>                    <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
           Color = {variable} (Argo) — {points.length} real observation points
         </p>
       </div>
@@ -479,8 +481,8 @@ function ComparisonChart({
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">Argo vs GLORYS Vertical Profile</h3>
-      <div className="inline-block rounded-lg border border-slate-800 bg-slate-900/30 p-4">
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>Argo vs GLORYS Vertical Profile</h3>
+      <div className="inline-block border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ maxWidth: '600px' }}>
           {/* Depth axis (Y, inverted: 0 at top) */}
           {Array.from({ length: 6 }, (_, i) => {
@@ -488,8 +490,8 @@ function ComparisonChart({
             const y = toY(depth);
             return (
               <g key={i}>
-                <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke="#1e293b" strokeWidth="0.5" />
-                <text x={padL - 5} y={y + 3} textAnchor="end" fill="#64748b" fontSize="8">
+                <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke="var(--os-border)" strokeWidth="0.5" />
+                <text x={padL - 5} y={y + 3} textAnchor="end" fill="var(--os-text-3)" fontSize="8">
                   {depth.toFixed(0)}
                 </text>
               </g>
@@ -502,8 +504,8 @@ function ComparisonChart({
             const x = toX(val);
             return (
               <g key={i}>
-                <line x1={x} y1={padT} x2={x} y2={chartH - padB} stroke="#1e293b" strokeWidth="0.5" />
-                <text x={x} y={chartH - padB + 14} textAnchor="middle" fill="#64748b" fontSize="8">
+                <line x1={x} y1={padT} x2={x} y2={chartH - padB} stroke="var(--os-border)" strokeWidth="0.5" />
+                <text x={x} y={chartH - padB + 14} textAnchor="middle" fill="var(--os-text-3)" fontSize="8">
                   {val.toFixed(1)}
                 </text>
               </g>
@@ -511,42 +513,41 @@ function ComparisonChart({
           })}
 
           {/* Argo line (dashed) */}
-          <polyline points={argoPath} fill="none" stroke="#a855f7" strokeWidth="2" strokeDasharray="4 2" />
+          <polyline points={argoPath} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 2" />
 
           {/* GLORYS line (solid) */}
-          <polyline points={glorysPath} fill="none" stroke="#06b6d4" strokeWidth="2" />
+          <polyline points={glorysPath} fill="none" stroke="#a855f7" strokeWidth="2" />
 
           {/* Data points */}
           {profilePoints.map((p, i) => (
             <g key={i}>
-              <circle cx={toX(p.argo)} cy={toY(p.depth)} r={2.5} fill="#a855f7" />
-              <circle cx={toX(p.glorys)} cy={toY(p.depth)} r={2.5} fill="#06b6d4" />
+              <circle cx={toX(p.argo)} cy={toY(p.depth)} r={2.5} fill="#22d3ee" />
+              <circle cx={toX(p.glorys)} cy={toY(p.depth)} r={2.5} fill="#a855f7" />
             </g>
           ))}
 
           {selectedMeasurement && (
             <g>
-              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#67e8f9" strokeWidth="1" strokeDasharray="3 2" />
+              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#d4a843" strokeWidth="1" strokeDasharray="3 2" />
               <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
               <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
             </g>
           )}
 
           {/* Legend */}
-          <line x1={padL + 10} y1={chartH - 8} x2={padL + 30} y2={chartH - 8} stroke="#a855f7" strokeWidth="2" strokeDasharray="4 2" />
-          <text x={padL + 34} y={chartH - 5} fill="#94a3b8" fontSize="8">Argo</text>
-          <line x1={padL + 80} y1={chartH - 8} x2={padL + 100} y2={chartH - 8} stroke="#06b6d4" strokeWidth="2" />
-          <text x={padL + 104} y={chartH - 5} fill="#94a3b8" fontSize="8">GLORYS</text>
+          <line x1={padL + 10} y1={chartH - 8} x2={padL + 30} y2={chartH - 8} stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 2" />
+          <text x={padL + 34} y={chartH - 5} fill="var(--os-text-2)" fontSize="9">Argo</text>
+          <line x1={padL + 80} y1={chartH - 8} x2={padL + 100} y2={chartH - 8} stroke="#a855f7" strokeWidth="2" />
+          <text x={padL + 104} y={chartH - 5} fill="var(--os-text-2)" fontSize="9">GLORYS</text>
 
           {/* Axis labels */}
-          <text x={padL + plotW / 2} y={chartH - 20} textAnchor="middle" fill="#94a3b8" fontSize="9">
+          <text x={padL + plotW / 2} y={chartH - 20} textAnchor="middle" fill="var(--os-text-2)" fontSize="9">
             {variable} ({unit})
           </text>
-          <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="#94a3b8" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>
+          <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="var(--os-text-2)" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>
             Depth (dbar)
           </text>
-        </svg>
-        <p className="mt-2 text-[10px] text-slate-500">
+        </svg>                    <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
           Averaged profile from {points.length} real observations — {profilePoints.length} unique depth levels
         </p>
       </div>
@@ -569,18 +570,18 @@ function ObservationTable({
 }) {
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-300">Observation Details</h3>
-      <div className="rounded-lg border border-slate-800 bg-slate-900/30 overflow-hidden">
+      <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>Observation Details</h3>
+      <div className="border overflow-hidden" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <table className="w-full text-[10px]">
           <thead>
-            <tr className="border-b border-slate-800 bg-slate-900/50">
-              <th className="px-2 py-1.5 text-left text-slate-500 font-medium">Lat</th>
-              <th className="px-2 py-1.5 text-left text-slate-500 font-medium">Lon</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium">Depth</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium">Argo</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium">GLORYS</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium">Diff</th>
-              <th className="px-2 py-1.5 text-left text-slate-500 font-medium">Platform</th>
+            <tr className="border-b" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface-2)' }}>
+              <th className="px-2 py-1.5 text-left font-medium" style={{ color: 'var(--os-text-3)' }}>Lat</th>
+              <th className="px-2 py-1.5 text-left font-medium" style={{ color: 'var(--os-text-3)' }}>Lon</th>
+              <th className="px-2 py-1.5 text-right font-medium" style={{ color: 'var(--os-text-3)' }}>Depth</th>
+              <th className="px-2 py-1.5 text-right font-medium" style={{ color: 'var(--os-text-3)' }}>Argo</th>
+              <th className="px-2 py-1.5 text-right font-medium" style={{ color: 'var(--os-text-3)' }}>GLORYS</th>
+              <th className="px-2 py-1.5 text-right font-medium" style={{ color: 'var(--os-text-3)' }}>Diff</th>
+              <th className="px-2 py-1.5 text-left font-medium" style={{ color: 'var(--os-text-3)' }}>Platform</th>
             </tr>
           </thead>
           <tbody>
@@ -589,16 +590,16 @@ function ObservationTable({
                 && selectedMeasurement?.cycleNumber === p.cycleNumber
                 && selectedMeasurement?.pressure === p.pressure;
               return (
-              <tr key={i} className={`border-b border-slate-800/50 hover:bg-slate-800/30 ${isSelected ? 'bg-cyan-950/40' : ''}`} onClick={() => onSelectPoint?.(p)} style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}>
-                <td className="px-2 py-1 text-slate-300">{p.latitude.toFixed(2)}</td>
-                <td className="px-2 py-1 text-slate-300">{p.longitude.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right text-slate-300">{p.pressure.toFixed(1)}</td>
-                <td className="px-2 py-1 text-right text-purple-300">{p.argoValue.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right text-cyan-300">{p.glorysValue.toFixed(2)}</td>
-                <td className={`px-2 py-1 text-right ${p.difference >= 0 ? 'text-amber-300' : 'text-blue-300'}`}>
+              <tr key={i} className="border-b" onClick={() => onSelectPoint?.(p)} style={{ cursor: onSelectPoint ? 'pointer' : 'default' }}>
+                <td className="px-2 py-1" style={{ color: 'var(--os-text)' }}>{p.latitude.toFixed(2)}</td>
+                <td className="px-2 py-1" style={{ color: 'var(--os-text)' }}>{p.longitude.toFixed(2)}</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--os-text)' }}>{p.pressure.toFixed(1)}</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--os-argo)' }}>{p.argoValue.toFixed(2)}</td>
+                <td className="px-2 py-1 text-right" style={{ color: 'var(--os-glorys)' }}>{p.glorysValue.toFixed(2)}</td>
+                <td className="px-2 py-1 text-right" style={{ color: p.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}>
                   {p.difference > 0 ? '+' : ''}{p.difference.toFixed(4)}
                 </td>
-                <td className="px-2 py-1 text-slate-400">{p.platformNumber}</td>
+                <td className="px-2 py-1" style={{ color: 'var(--os-text-3)' }}>{p.platformNumber}</td>
               </tr>
               );
             })}

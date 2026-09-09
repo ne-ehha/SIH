@@ -57,11 +57,11 @@ export function VerticalProfile() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Vertical Profile</h3>
-        <span className="text-[10px] text-slate-500">Real API data</span>
+        <h3 className="text-[13px] font-semibold" style={{ color: 'var(--os-text)' }}>Vertical Profile</h3>
+        <span className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>Real API data</span>
       </div>
 
-      <div className="h-64 rounded-lg border border-slate-800 bg-slate-900/30 p-4">
+      <div className="h-64 rounded-lg border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={chartData}
@@ -69,30 +69,34 @@ export function VerticalProfile() {
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} label={{ value: 'Value', position: 'bottom', fill: '#64748b', fontSize: 10 }} />
+            <XAxis
+              type="number"
+              tick={{ fill: 'var(--os-text-3)', fontSize: 10 }}
+              label={{ value: 'Value', position: 'bottom', fill: 'var(--os-text-3)', fontSize: 10 }}
+            />
             <YAxis
               type="category"
               dataKey="depthLabel"
-              tick={{ fill: '#64748b', fontSize: 10 }}
-              label={{ value: 'Depth', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: 'var(--os-text-3)', fontSize: 10 }}
+              label={{ value: 'Depth', angle: -90, position: 'insideLeft', fill: 'var(--os-text-3)', fontSize: 10 }}
               reversed
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#0d1224',
-                border: '1px solid #1e293b',
+                backgroundColor: 'var(--os-surface)',
+                border: '1px solid var(--os-border)',
                 borderRadius: '8px',
                 fontSize: '11px',
               }}
             />
             <Legend wrapperStyle={{ fontSize: '11px' }} />
-            <Line type="monotone" dataKey="modelValue" stroke="#06b6d4" strokeWidth={2} name="GLORYS" dot={false} />
-            <Line type="monotone" dataKey="observationValue" stroke="#a855f7" strokeWidth={2} name="Argo" dot={false} strokeDasharray="5 5" />
+            <Line type="monotone" dataKey="modelValue" stroke="#a855f7" strokeWidth={2} name="GLORYS" dot={false} />
+            <Line type="monotone" dataKey="observationValue" stroke="#22d3ee" strokeWidth={2} name="Argo" dot={false} strokeDasharray="5 5" />
           </LineChart>
         </ResponsiveContainer>
       </div>
       {selectedMeasurement && (
-        <p className="text-[10px] text-cyan-300">
+        <p className="text-[10px] mono" style={{ color: 'var(--os-selected)' }}>
           Selected real record: {selectedMeasurement.pressure.toFixed(1)} dbar (slider {selectedDepth}m)
         </p>
       )}

@@ -1,5 +1,11 @@
 export type DiagnosticStatus = 'inactive' | 'active' | 'complete' | 'loading';
 
+export interface DiagnosticCauseItem {
+  name: string;
+  confidence: 'low' | 'medium' | 'high';
+  evidence: string[];
+}
+
 export interface DiagnosticResult {
   id: string;
   possibleCause: string;
@@ -7,6 +13,8 @@ export interface DiagnosticResult {
   evidence: string[];
   status: DiagnosticStatus;
   errorFingerprint?: string;
+  /** All candidate causes returned by the diagnostics API (when available). */
+  allCauses?: DiagnosticCauseItem[];
 }
 
 export interface WorkflowStep {
