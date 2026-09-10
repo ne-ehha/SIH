@@ -31,10 +31,22 @@ export default defineConfig({
   define: {
     CESIUM_BASE_URL: JSON.stringify('/cesium/'),
   },
-  // Proxy /api/* to local FastAPI during development
+  // Proxy /api/* to local FastAPI during development.
+  // Narrowed to '/api/' so client routes like /api-docs are served by the
+  // SPA fallback instead of being proxied to the backend.
   server: {
     proxy: {
-      '/api': {
+      '/api/': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      // FastAPI OpenAPI schema + Swagger UI for the API Documentation page.
+      // Not prefixed with /api/ — these are root-level backend routes.
+      '/openapi.json': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/docs': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },

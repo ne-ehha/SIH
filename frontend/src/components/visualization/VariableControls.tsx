@@ -18,7 +18,7 @@ export function VariableControls() {
             className="flex w-full items-center gap-2 px-2 py-1 text-[12px] transition"
             style={{
               color: selectedVariable === v.id ? 'var(--os-accent)' : 'var(--os-text-3)',
-              background: selectedVariable === v.id ? 'rgba(59,130,200,0.08)' : undefined,
+              background: selectedVariable === v.id ? 'rgba(6,182,212,0.08)' : undefined,
               borderLeft: selectedVariable === v.id ? '2px solid var(--os-accent)' : '2px solid transparent',
             }}
           >

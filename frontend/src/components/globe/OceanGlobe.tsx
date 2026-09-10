@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { Minus, Plus } from 'lucide-react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { useOceanStore } from '@/state/oceanStore';
@@ -20,15 +21,42 @@ export function OceanGlobe() {
   const initialCameraSetRef = useRef(false);
   const initialRegionNavigationHandledRef = useRef(false);
   const pendingFitTriggerRef = useRef<number | null>(null);
+  const inactivityTimerRef = useRef<number | null>(null);
+  const autoRotationActiveRef = useRef(false);
+  const applyingAutoRotationRef = useRef(false);
   const reducedMotionRef = useRef(
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   );
 
-  const { setSelectedLocation, selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedObservationId, selectedDate, setWorkspaceMode, fitAllObservationsTrigger } = useOceanStore();
+  const { selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedObservationId, selectedDate, fitAllObservationsTrigger, activeLayers } = useOceanStore();
+
+  // Layer manager (SIH26067): observation layer visibility + opacity are real controls.
+  const observationsLayer = activeLayers.find((l) => l.id === 'observations');
+  const observationsVisible = observationsLayer?.enabled ?? true;
+  const observationsOpacity = observationsLayer?.opacity ?? 1;
   const [observations, setObservations] = useState<ObservationPoint[]>([]);
   const [observationsLoading, setObservationsLoading] = useState(true);
   const [viewerReady, setViewerReady] = useState(false);
   const [sceneImageryReady, setSceneImageryReady] = useState(false);
+
+  const resetAutoRotation = useCallback(() => {
+    autoRotationActiveRef.current = false;
+    if (inactivityTimerRef.current !== null) window.clearTimeout(inactivityTimerRef.current);
+    if (!reducedMotionRef.current) {
+      inactivityTimerRef.current = window.setTimeout(() => {
+        autoRotationActiveRef.current = true;
+      }, 3000);
+    }
+  }, []);
+
+  const zoomCamera = useCallback((direction: 'in' | 'out') => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    resetAutoRotation();
+    const distance = Math.max(viewer.camera.positionCartographic.height * 0.18, 25000);
+    if (direction === 'in') viewer.camera.zoomIn(distance);
+    else viewer.camera.zoomOut(distance);
+  }, [resetAutoRotation]);
 
   // Fetch real observation data from the API
   useEffect(() => {
@@ -55,47 +83,15 @@ export function OceanGlobe() {
   // Store observations in a ref so the click handler can access them
   const observationsRef = useRef<ObservationPoint[]>([]);
 
+  // Arbitrary globe clicks are navigation-only. They must NOT create
+  // scientific observations or set selectedLocation. Only clicking an actual
+  // observation marker may activate profile inspection.
   const handleCoordinateClick = useCallback(
-    (position: Cesium.Cartesian3) => {
-      const cartographic = Cesium.Cartographic.fromCartesian(position);
-      const lat = Cesium.Math.toDegrees(cartographic.latitude);
-      const lng = Cesium.Math.toDegrees(cartographic.longitude);
-
-      if (lat === undefined || lng === undefined) return;
-
-      // Find the nearest real observation (from API stations or research coverage)
-      const allLocations = [
-        ...observationsRef.current.map(o => ({ lat: o.latitude, lng: o.longitude })),
-        ...RESEARCH_DATA_COVERAGE.map(p => ({ lat: p.latitude, lng: p.longitude })),
-      ];
-
-      let nearestDist = Infinity;
-      let nearestLat = lat;
-      let nearestLng = lng;
-
-      for (const loc of allLocations) {
-        const dist = Math.sqrt((loc.lat - lat) ** 2 + (loc.lng - lng) ** 2);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestLat = loc.lat;
-          nearestLng = loc.lng;
-        }
-      }
-
-      // Snap to nearest observation if within ~200km (~1.8 degrees)
-      const SNAP_THRESHOLD = 1.8;
-      if (nearestDist < SNAP_THRESHOLD) {
-        // This remains navigation only: it must not retain a previously selected profile.
-        clearSelectedObservation();
-        setSelectedLocation({ latitude: nearestLat, longitude: nearestLng });
-      } else {
-        clearSelectedObservation();
-        // No nearby observation — just navigate (no scientific selection)
-        // Don't set selectedLocation to avoid fake observation data
-        console.info(`Click at ${lat.toFixed(2)}, ${lng.toFixed(2)} — no Argo profile within ${SNAP_THRESHOLD.toFixed(1)}°. Use observation markers for scientific data.`);
-      }
+    (_position: Cesium.Cartesian3) => {
+      // Intentionally empty: arbitrary clicks are navigation-only.
+      // Scientific selection requires clicking an observation marker.
     },
-    [clearSelectedObservation, setSelectedLocation, setWorkspaceMode]
+    []
   );
 
   // Initialize Cesium Viewer
@@ -128,6 +124,23 @@ export function OceanGlobe() {
 
     // Ocean-like appearance
     viewer.scene.globe.showWaterEffect = false;
+
+    const onTick = () => {
+      if (!autoRotationActiveRef.current || reducedMotionRef.current) return;
+      applyingAutoRotationRef.current = true;
+      viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.006));
+      applyingAutoRotationRef.current = false;
+    };
+    viewer.clock.onTick.addEventListener(onTick);
+
+    const onUserInteraction = () => {
+      if (!applyingAutoRotationRef.current) resetAutoRotation();
+    };
+    const interactionEvents: Array<keyof HTMLElementEventMap> = ['pointerdown', 'wheel', 'touchstart', 'keydown'];
+    interactionEvents.forEach((eventName) => viewer.canvas.addEventListener(eventName, onUserInteraction, { passive: true }));
+    viewer.camera.moveStart.addEventListener(onUserInteraction);
+    viewer.camera.moveEnd.addEventListener(onUserInteraction);
+    resetAutoRotation();
 
     // Atmosphere
     if (viewer.scene.skyAtmosphere) {
@@ -188,13 +201,14 @@ export function OceanGlobe() {
           if (obsId) {
             const obs = observationsRef.current.find((o) => o.id === obsId);
             if (obs) {
+              // Select the observation and show it in the panel.
+              // Do NOT auto-navigate to Research — user must explicitly choose Inspect.
               selectResearchObservation({
                 id: obsId,
                 location: { latitude: obs.latitude, longitude: obs.longitude },
                 date: obs.timestamp.substring(0, 10),
               });
-              setWorkspaceMode('research');
-              return; // Observation marker clicked — done
+              return; // Observation marker clicked — selection shown in panel
             }
           }
 
@@ -212,19 +226,14 @@ export function OceanGlobe() {
                 return dist < 2.0;
               });
               if (nearestObs) {
+                // Select the observation — show in panel, don't auto-navigate.
                 selectResearchObservation({
                   id: nearestObs.id,
                   location: { latitude: nearestObs.latitude, longitude: nearestObs.longitude },
                   date: nearestObs.timestamp.substring(0, 10),
                 });
-              } else {
-                // No API station nearby — set location but no observation ID
-                // This prevents fake observation selection
-                clearSelectedObservation();
-                setSelectedLocation({ latitude: cov.latitude, longitude: cov.longitude });
               }
-              setWorkspaceMode('research');
-              return;
+              return; // Coverage marker clicked — selection shown in panel
             }
           }
         }
@@ -248,12 +257,20 @@ export function OceanGlobe() {
       handler.destroy();
       viewer.scene.globe.tileLoadProgressEvent.removeEventListener(tileLoadListener);
       viewer.scene.postRender.removeEventListener(postRenderListener);
+      viewer.clock.onTick.removeEventListener(onTick);
+      interactionEvents.forEach((eventName) => viewer.canvas.removeEventListener(eventName, onUserInteraction));
+      viewer.camera.moveStart.removeEventListener(onUserInteraction);
+      viewer.camera.moveEnd.removeEventListener(onUserInteraction);
+      if (inactivityTimerRef.current !== null) window.clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+      autoRotationActiveRef.current = false;
+      applyingAutoRotationRef.current = false;
       viewer.destroy();
       viewerRef.current = null;
       setViewerReady(false);
       setSceneImageryReady(false);
     };
-  }, [handleCoordinateClick, selectResearchObservation, setWorkspaceMode]);
+  }, [handleCoordinateClick, selectResearchObservation, clearSelectedObservation, resetAutoRotation]);
 
   const fitCameraToPoints = useCallback((sourceObservations: ObservationPoint[]) => {
     const viewer = viewerRef.current;
@@ -413,6 +430,7 @@ export function OceanGlobe() {
 
     // Render API observation stations (typically 3-5 per date)
     observations.forEach((obs) => {
+      if (!observationsVisible) return; // layer manager visibility
       const color =
         obs.status === 'active'
           ? Cesium.Color.fromCssColorString('#22d3ee')  // Argo cyan
@@ -426,7 +444,7 @@ export function OceanGlobe() {
         position: Cesium.Cartesian3.fromDegrees(obs.longitude, obs.latitude, 0),
         point: {
           pixelSize: isSelected ? 14 : 10,
-          color: isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : color,
+          color: (isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : color).withAlpha(observationsOpacity),
           outlineColor: Cesium.Color.WHITE.withAlpha(isSelected ? 0.9 : 0.6),
           outlineWidth: isSelected ? 2 : 1,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
@@ -462,12 +480,13 @@ export function OceanGlobe() {
       const key = `${cov.latitude.toFixed(2)},${cov.longitude.toFixed(2)}`;
       // Skip if an API station already exists at this exact location
       if (apiLats.has(key)) return;
+      if (!observationsVisible) return; // layer manager visibility
 
       const entity = viewer.entities.add({
         position: Cesium.Cartesian3.fromDegrees(cov.longitude, cov.latitude, 0),
         point: {
           pixelSize: 7,
-          color: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(0.55),
+          color: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(0.55 * observationsOpacity),
           outlineColor: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(0.8),
           outlineWidth: 1,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
@@ -495,7 +514,7 @@ export function OceanGlobe() {
 
       markersRef.current.push(entity);
     });
-  }, [observations, selectedObservationId, sceneImageryReady]);
+  }, [observations, selectedObservationId, sceneImageryReady, observationsVisible, observationsOpacity]);
 
   // Show selected coordinate marker
   useEffect(() => {
@@ -545,6 +564,11 @@ export function OceanGlobe() {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+
+      <div className="absolute right-3 top-3 z-20 flex flex-col overflow-hidden border border-slate-700/80 bg-[#08111f]/90 shadow-lg backdrop-blur-sm">
+        <button type="button" onClick={() => zoomCamera('in')} className="flex h-8 w-8 items-center justify-center border-b border-slate-700/80 text-slate-300 transition hover:bg-cyan-950/60 hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300" aria-label="Zoom in on globe" title="Zoom in"><Plus className="h-4 w-4" /></button>
+        <button type="button" onClick={() => zoomCamera('out')} className="flex h-8 w-8 items-center justify-center text-slate-300 transition hover:bg-cyan-950/60 hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300" aria-label="Zoom out on globe" title="Zoom out"><Minus className="h-4 w-4" /></button>
+      </div>
       
       {/* Geographic context loading veil */}
       {!sceneImageryReady && viewerReady && (
@@ -571,9 +595,9 @@ export function OceanGlobe() {
         </div>
       )}
 
-      {/* Globe overlay hint */}
-      <div className="absolute bottom-2 left-2 px-2 py-1 text-[9px] text-[var(--os-text-muted)]" style={{ background: 'rgba(8,12,22,0.85)' }}>
-        Click observation marker to select · Click near marker to snap
+      {/* Globe instruction hint */}
+      <div className="absolute bottom-2 left-2 px-2 py-1 text-[9px]" style={{ background: 'rgba(8,12,22,0.85)', color: 'var(--os-text-muted)' }}>
+        Click a cyan marker to select an Argo observation · Arbitrary clicks are navigation only
       </div>
     </div>
   );

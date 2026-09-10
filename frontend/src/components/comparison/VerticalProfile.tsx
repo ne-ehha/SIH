@@ -61,7 +61,7 @@ export function VerticalProfile() {
         <span className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>Real API data</span>
       </div>
 
-      <div className="h-64 rounded-lg border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+      <div className="h-64 border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={chartData}
@@ -85,7 +85,7 @@ export function VerticalProfile() {
               contentStyle={{
                 backgroundColor: 'var(--os-surface)',
                 border: '1px solid var(--os-border)',
-                borderRadius: '8px',
+                borderRadius: '2px',
                 fontSize: '11px',
               }}
             />

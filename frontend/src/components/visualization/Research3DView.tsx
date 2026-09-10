@@ -8,16 +8,17 @@
  * sparse, irregularly spaced GLORYS × Argo collocated observations.
  */
 
-import { useState, useCallback } from 'react';
+import { useRef, useState } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D } from '@/integration';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ErrorState } from '@/components/common/ErrorState';
-import { DepthInspectorScene } from './research3d/DepthInspectorScene';
+import { DepthInspectorScene, type InspectorViewControls } from './research3d/DepthInspectorScene';
 import type { Research3DPoint } from '@/integration';
 
 export function Research3DView() {
   const [selectedPoint, setSelectedPoint] = useState<Research3DPoint | null>(null);
+  const viewControlsRef = useRef<InspectorViewControls | null>(null);
   const {
     selectedLocation,
     selectedVariable,
@@ -25,7 +26,6 @@ export function Research3DView() {
     selectedTime,
     selectedObservationId,
     selectedDepth,
-    setSelectedDepth,
     isModelViewOpen,
     setIsModelViewOpen,
   } = useOceanStore();
@@ -160,28 +160,30 @@ export function Research3DView() {
                   {/* 3D Depth Inspector (R3F Canvas) */}
                   <div>
                     <h3 className="mb-2 text-[13px] font-medium" style={{ color: 'var(--os-text)' }}>3D Depth Inspector</h3>
-                    <div className="border" style={{ height: '400px', borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+                    <div className="relative border" style={{ height: '400px', borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
                       <DepthInspectorScene
                         className="h-full w-full"
                         profilePoints={selectedProfilePoints}
                         unit={unit}
                         variable={selectedVariable}
                         selectedDepth={selectedDepth}
+                        viewControlsRef={viewControlsRef}
                       />
+                      <div className="absolute right-2 top-2 z-10 flex gap-1" aria-label="3D view controls">
+                        <button type="button" onClick={() => viewControlsRef.current?.zoomIn()} className="border px-2 py-1 text-[10px]" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-surface)' }}>
+                          Zoom In
+                        </button>
+                        <button type="button" onClick={() => viewControlsRef.current?.zoomOut()} className="border px-2 py-1 text-[10px]" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-surface)' }}>
+                          Zoom Out
+                        </button>
+                        <button type="button" onClick={() => viewControlsRef.current?.resetView()} className="border px-2 py-1 text-[10px]" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-surface)' }}>
+                          Reset View
+                        </button>
+                      </div>
                     </div>
-                    {/* Depth slider */}
-                    <div className="mt-3 flex items-center gap-3">
-                      <label className="text-[10px] whitespace-nowrap" style={{ color: 'var(--os-text-3)' }}>Depth</label>
-                      <input
-                        type="range"
-                        min={0}
-                        max={500}
-                        step={1}
-                        value={selectedDepth}
-                        onChange={(e) => setSelectedDepth(Number(e.target.value))}
-                        className="flex-1"
-                      />
-                      <span className="text-[11px] font-mono w-12 text-right" style={{ color: 'var(--os-argo)' }}>{selectedDepth}m</span>
+                    <div className="mt-3 flex items-center justify-between border-t pt-2 text-[10px]" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-3)' }}>
+                      <span>Depth is controlled in the Research workspace.</span>
+                      <span className="font-mono tabular-nums" style={{ color: 'var(--os-argo)' }}>{selectedDepth} m</span>
                     </div>
                     {selectedProfilePoints.length > 0 && (
                       <p className="mt-2 text-[10px]" style={{ color: 'var(--os-text-3)' }}>
@@ -273,9 +275,9 @@ function Row({ label, value, color }: { label: string; value: string; color?: st
 
 function SelectedPointDetail({ point, unit, onClose }: { point: Research3DPoint; unit: string; onClose: () => void }) {
   return (
-    <div className="rounded-lg border border-cyan-800/50 bg-cyan-900/20 p-4">
+    <div className="border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-cyan-300">Selected Observation</h3>
+        <h3 className="text-sm font-medium" style={{ color: 'var(--os-argo)' }}>Selected Observation</h3>
         <button onClick={onClose} className="text-xs" style={{ color: 'var(--os-text-3)' }}>Close</button>
       </div>
         <div className="grid grid-cols-4 gap-3 text-[11px]">
@@ -528,7 +530,7 @@ function ComparisonChart({
 
           {selectedMeasurement && (
             <g>
-              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#d4a843" strokeWidth="1" strokeDasharray="3 2" />
+              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#06b6d4" strokeWidth="1" strokeDasharray="3 2" />
               <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
               <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={4} fill="none" stroke="#f8fafc" strokeWidth="1.5" />
             </g>
