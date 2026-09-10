@@ -5,18 +5,22 @@ import { StatusBar } from './StatusBar';
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  /** Show the context control rail (variable/time/depth/color/layers). */
+  contextRail?: boolean;
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, contextRail = false }: DashboardLayoutProps) {
   return (
     <div className="workstation-shell">
       <div className="workstation-header">
         <Header />
       </div>
-      <div className="workstation-sidebar sidebar-rail">
-        <Sidebar />
-      </div>
-      <div className="workstation-main">
+      {contextRail && (
+        <div className="workstation-sidebar sidebar-rail">
+          <Sidebar />
+        </div>
+      )}
+      <div className={`workstation-main ${contextRail ? '' : 'workstation-main-full'}`}>
         {children}
       </div>
       <div className="workstation-status">
@@ -24,4 +28,4 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
     </div>
   );
-}
+}

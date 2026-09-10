@@ -8,21 +8,21 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* ── Scientific Color System ─────────────────────────────── */
+/* ── Stitch Design System Tokens ─────────────────────────── */
 :root {
-  /* Workspace surfaces */
-  --os-bg:           #080c16;
-  --os-surface:      #0c1121;
-  --os-surface-2:    #101828;
-  --os-border:       #1a2236;
-  --os-border-light: #222d44;
+  /* Deep navy oceanic surfaces — layered hierarchy */
+  --os-bg:           #060a14;
+  --os-surface:      #0b1120;
+  --os-surface-2:    #101a2e;
+  --os-border:       #182240;
+  --os-border-light: #1f2e52;
 
-  /* Text hierarchy — Phase 12A readability
+  /* Text hierarchy — scientific readability
      SCIENTIFIC READING > SECTION TITLE > SECONDARY META > TERTIARY */
-  --os-text:         #dce2ec;
-  --os-text-2:       #9aa5b8;
-  --os-text-3:       #6b768c;
-  --os-text-muted:   #4a5568;
+  --os-text:         #d8e0ec;
+  --os-text-2:       #8e9bb2;
+  --os-text-3:       #5c6a82;
+  --os-text-muted:   #3e4d66;
 
   /* Type scale (minimums for workstation UI) */
   --os-type-reading: 16px;   /* primary scientific readings */
@@ -31,14 +31,60 @@ html, body, #root {
   --os-type-caption: 11px;   /* captions / axes */
   --os-type-label:   10px;   /* tertiary labels only */
 
-  /* Scientific semantic */
+  /* Scientific cyan primary accent */
+  --os-accent:       #22b8cf;
+  --os-accent-dim:   rgba(34, 184, 207, 0.12);
+
+  /* Teal secondary accent */
+  --os-teal:         #14b8a6;
+  --os-teal-dim:     rgba(20, 184, 166, 0.10);
+
+  /* Semantic states */
+  --os-success:      #22c55e;
+  --os-warn:         #f59e0b;
+  --os-error:        #ef4444;
+
+  /* Scientific dataset distinction — Argo (cyan) vs GLORYS (purple) */
   --os-argo:         #22d3ee;
-  --os-glorys:       #a855f7;
-  --os-diff-pos:     #e8a63a;
-  --os-diff-neg:     #5b8def;
-  --os-selected:     #d4a843;
-  --os-accent:       #3b82c8;
-  --os-success:      #4a9e6e;
+  --os-glorys:       #a78bfa;
+
+  /* Discrepancy convention: GLORYS − Argo (positive = model higher) */
+  --os-diff-pos:     #f59e0b;
+  --os-diff-neg:     #60a5fa;
+
+  /* Selection — sharp cyan indicator */
+  --os-selected:     #06b6d4;
+}
+
+/* ── Typography ──────────────────────────────────────────── */
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--os-text);
+  background:
+    radial-gradient(900px 520px at 16% -12%, rgba(20, 115, 144, 0.16), transparent 62%),
+    radial-gradient(720px 420px at 88% 100%, rgba(9, 77, 112, 0.12), transparent 66%),
+    #050914;
+}
+
+#root { background: linear-gradient(135deg, rgba(5, 11, 23, 0.96), rgba(4, 10, 20, 0.98)); }
+
+/* Existing workspace shells use Tailwind arbitrary background classes. These
+   refinements keep their layouts intact while giving every workspace the same
+   calm depth hierarchy. */
+[class~="bg-[#060a12]"] {
+  background-color: #050b16 !important;
+  background-image: radial-gradient(760px 360px at 74% -18%, rgba(20, 107, 136, 0.09), transparent 65%) !important;
+}
+
+[class~="bg-[#09101c]"] {
+  background-color: #09111f !important;
+  background-image: linear-gradient(105deg, rgba(14, 28, 45, 0.94), rgba(8, 16, 29, 0.97)) !important;
+}
+
+[class~="bg-[#09101d]"] {
+  background-color: #0b1626 !important;
+  background-image: linear-gradient(145deg, rgba(14, 27, 45, 0.96), rgba(9, 18, 32, 0.98)) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* ── Custom Scrollbar ─────────────────────────────────────── */
@@ -62,7 +108,7 @@ html, body, #root {
 
 /* ── Selection ────────────────────────────────────────────── */
 ::selection {
-  background: rgba(59, 130, 200, 0.25);
+  background: rgba(6, 182, 212, 0.25);
   color: white;
 }
 
@@ -88,6 +134,14 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 2px;
   background: var(--os-accent);
   margin-top: -4px;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 10px;
+  width: 10px;
+  border-radius: 2px;
+  background: var(--os-accent);
   border: none;
 }
 
@@ -141,6 +195,11 @@ input[type="range"]::-webkit-slider-thumb {
   overflow: hidden;
 }
 
+/* When the context rail is absent the main area spans the full column. */
+.workstation-main-full {
+  grid-column: 1 / -1;
+}
+
 .workstation-status {
   grid-column: 1 / -1;
   grid-row: 3;
@@ -152,11 +211,97 @@ input[type="range"]::-webkit-slider-thumb {
   will-change: width;
 }
 
+/* ── Selected State System ──────────────────────────────── */
+/*
+ * Reusable selected/active pattern used by navigation, module cards,
+ * stations, and layers: brighter accent border, subtle accent glow,
+ * stronger text, restrained elevation. Unselected elements stay quieter.
+ */
+.os-selectable {
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+.os-selected {
+  border-color: var(--os-accent);
+  color: var(--os-text);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.30);
+}
+
+/* ── Platform Navigation ────────────────────────────────── */
+.os-nav-item {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--os-text-3);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.os-nav-item:hover {
+  color: var(--os-text-2);
+  background-color: rgba(6, 182, 212, 0.05);
+}
+
+.os-nav-item-active {
+  color: var(--os-text);
+  background-color: rgba(6, 182, 212, 0.08);
+  box-shadow: inset 0 -2px 0 var(--os-accent);
+}
+
+/* ── Status Badge ────────────────────────────────────────── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--os-border-light);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.status-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+/* ── Form field label ────────────────────────────────────── */
+.field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text-muted);
+}
+
 /* ── Panel Base — Scientific ──────────────────────────────── */
 .panel {
   border: 1px solid var(--os-border);
-  background: var(--os-surface);
-  border-radius: 2px;
+  background: linear-gradient(145deg, rgba(14, 23, 40, 0.97), rgba(9, 16, 30, 0.97));
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+  transition: transform 210ms ease, border-color 210ms ease, box-shadow 210ms ease, background-color 210ms ease;
+}
+
+.panel:hover {
+  border-color: rgba(42, 160, 185, 0.46);
+  background: linear-gradient(145deg, rgba(16, 29, 49, 0.98), rgba(10, 20, 36, 0.98));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(34, 184, 207, 0.06);
+  transform: translateY(-2px);
 }
 
 .panel-header {
@@ -221,12 +366,12 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ── Mono Values ──────────────────────────────────────────── */
 .mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 
 .os-reading {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   font-size: var(--os-type-reading);
   color: var(--os-text);
@@ -282,7 +427,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 .evidence-row .evidence-value {
   flex: 1;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   text-align: right;
   color: var(--os-text);
@@ -345,21 +490,21 @@ input[type="range"]::-webkit-slider-thumb {
 
 .investigation-strip .inv-value {
   color: var(--os-text-2);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: var(--os-type-meta);
 }
 
 .investigation-strip .inv-highlight {
   color: var(--os-argo);
   font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: var(--os-type-meta);
 }
 
 .investigation-strip .inv-context {
   color: var(--os-text-2);
   font-size: var(--os-type-caption);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 .investigation-strip .inv-meta-inline {
@@ -376,12 +521,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .workspace-tab:hover {
-  background-color: rgba(59, 130, 200, 0.04);
+  background-color: rgba(6, 182, 212, 0.05);
 }
 
 .workspace-tab-active {
   position: relative;
-  background-color: rgba(59, 130, 200, 0.06);
+  background-color: rgba(6, 182, 212, 0.07);
 }
 
 .workspace-tab-active::after {
@@ -411,7 +556,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ── Research Scientific Readability ──────────────────────── */
 .research-sci-value {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   font-size: var(--os-type-reading);
   font-weight: 600;
@@ -438,7 +583,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .research-depth-badge .depth-value {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   font-size: 18px;
   font-weight: 600;
@@ -468,7 +613,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .research-evidence-row .evidence-value {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   font-size: var(--os-type-reading);
   font-weight: 600;
@@ -498,7 +643,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .report-sci-value {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   font-size: 18px;
   font-weight: 600;
@@ -582,7 +727,212 @@ input[type="range"]::-webkit-slider-thumb {
     transition: none;
   }
 
+  .os-nav-item,
+  .os-selectable {
+    transition: none;
+  }
+
   .investigation-strip .inv-purpose {
     transition: none;
   }
+}
+
+/* ── Stitch Visual Background Patterns ────────────────────── */
+.bg-grid-pattern {
+  background-image: radial-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-depth-gradient {
+  background: linear-gradient(180deg, #0f172a 0%, #070c14 100%);
+}
+
+/* Final visual refinement: calm depth, raised scientific surfaces, and editorial navigation. */
+.launchpad-page {
+  background:
+    radial-gradient(900px 520px at 84% 2%, rgba(24, 118, 142, 0.13), transparent 58%),
+    radial-gradient(760px 480px at 2% 86%, rgba(10, 65, 102, 0.12), transparent 62%),
+    linear-gradient(135deg, #050a14, #07101d 52%, #050b16);
+}
+
+.launchpad-shell { position: relative; }
+
+.launchpad-shell::before {
+  content: '';
+  position: absolute;
+  inset: 8rem -5rem auto auto;
+  width: 26rem;
+  height: 10rem;
+  pointer-events: none;
+  opacity: 0.34;
+  background: radial-gradient(ellipse at center, rgba(40, 177, 193, 0.12), transparent 69%);
+  filter: blur(18px);
+}
+
+.launch-workspace {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: center;
+  margin-left: var(--launch-offset, 0px);
+  padding: 1.05rem 1.15rem 1.05rem 0.85rem;
+  border-color: rgba(36, 58, 87, 0.8);
+  background: linear-gradient(100deg, rgba(12, 23, 40, 0.84), rgba(10, 18, 33, 0.63));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+  transition: transform 210ms ease, border-color 210ms ease, box-shadow 210ms ease, background 210ms ease;
+}
+
+.launch-workspace::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(105deg, transparent 15%, rgba(40, 183, 197, 0.08) 52%, transparent 78%);
+  transform: translateX(-28%);
+  transition: opacity 210ms ease, transform 480ms ease;
+}
+
+.launch-workspace:hover,
+.launch-workspace:focus-visible {
+  z-index: 1;
+  border-color: rgba(48, 187, 207, 0.7);
+  background: linear-gradient(100deg, rgba(16, 34, 55, 0.96), rgba(10, 26, 42, 0.91));
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(34, 184, 207, 0.1);
+  transform: translateY(-3px) scale(1.008);
+}
+
+.launch-workspace:hover::after,
+.launch-workspace:focus-visible::after { opacity: 1; transform: translateX(22%); }
+
+.launch-workspace-index {
+  position: relative;
+  z-index: 1;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: rgba(91, 126, 151, 0.95);
+}
+
+.launch-workspace-arrow {
+  position: relative;
+  z-index: 1;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--os-text-3);
+  transition: color 210ms ease, transform 210ms ease;
+}
+
+.launch-workspace:hover .launch-workspace-arrow,
+.launch-workspace:focus-visible .launch-workspace-arrow { color: #8eeaf3; transform: translateX(2px); }
+
+.launch-workspace-supporting {
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  min-height: 8.5rem;
+  padding: 0.9rem;
+}
+
+.launch-workspace-supporting .launch-workspace-arrow { display: none; }
+
+.launchpad-context {
+  padding: 1.25rem 1.35rem;
+  border: 1px solid rgba(37, 59, 88, 0.75);
+  border-left: 2px solid rgba(34, 184, 207, 0.55);
+  background: linear-gradient(110deg, rgba(11, 24, 40, 0.73), rgba(8, 17, 31, 0.48));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.ocean-transition {
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 42%, rgba(16, 89, 116, 0.24), transparent 52%), #050b16;
+}
+
+.ocean-transition-wave {
+  position: absolute;
+  width: 150%;
+  height: 42%;
+  left: -25%;
+  border-radius: 48% 52% 0 0;
+  pointer-events: none;
+  filter: blur(2px);
+}
+
+.ocean-transition-wave-one { bottom: -19%; background: linear-gradient(105deg, rgba(22, 128, 156, 0.1), rgba(41, 194, 198, 0.26), rgba(16, 80, 140, 0.12)); animation: ocean-wave-pass 4.2s ease-in-out infinite alternate; }
+.ocean-transition-wave-two { bottom: -28%; background: linear-gradient(95deg, rgba(11, 70, 116, 0.12), rgba(39, 150, 179, 0.17), rgba(13, 77, 110, 0.08)); animation: ocean-wave-pass 5.4s ease-in-out infinite alternate-reverse; }
+
+/* Focused sign-in surface: an atmospheric extension of the Home palette. */
+.login-page {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(68rem 36rem at 18% 5%, rgba(20, 91, 119, 0.19), transparent 58%), radial-gradient(52rem 34rem at 90% 85%, rgba(15, 55, 104, 0.22), transparent 64%), linear-gradient(145deg, #020711 0%, #04111f 52%, #040b18 100%);
+}
+
+.login-depth-flow { position: absolute; z-index: -1; inset: -22%; background: radial-gradient(ellipse at 18% 44%, transparent 0 23%, rgba(21, 88, 123, 0.12) 34%, transparent 55%), radial-gradient(ellipse at 84% 60%, transparent 0 18%, rgba(16, 71, 113, 0.1) 31%, transparent 54%); filter: blur(18px); animation: login-depth-drift 36s ease-in-out infinite alternate; pointer-events: none; }
+.login-composition { padding-bottom: 2.8rem; }
+.login-brand { margin: 0 0 1.5rem 0.25rem; }
+.login-brand div { color: #f4f8fb; font-size: 2rem; font-weight: 650; letter-spacing: -0.04em; line-height: 1; }
+.login-brand p { margin-top: 0.55rem; color: rgba(156, 184, 202, 0.82); font-size: 0.82rem; letter-spacing: 0.015em; }
+.login-surface { background: linear-gradient(145deg, rgba(13, 30, 48, 0.93), rgba(7, 18, 33, 0.91)); border-color: rgba(111, 158, 184, 0.28); box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42), 0 1px 0 rgba(255, 255, 255, 0.045) inset; backdrop-filter: blur(7px); }
+.login-wave { position: absolute; width: 160%; height: 32%; left: -30%; border-radius: 48% 52% 0 0; pointer-events: none; filter: blur(1px); }
+.login-wave-one { bottom: -11%; background: linear-gradient(100deg, rgba(20, 87, 127, 0.12), rgba(67, 179, 188, 0.19), rgba(17, 73, 126, 0.11)); animation: login-wave-drift 14s ease-in-out infinite alternate; }
+.login-wave-two { bottom: -22%; background: linear-gradient(100deg, rgba(11, 52, 98, 0.24), rgba(23, 125, 154, 0.16), rgba(9, 51, 95, 0.22)); animation: login-wave-drift 18s ease-in-out infinite alternate-reverse; }
+.login-current { position: absolute; z-index: -1; width: 76vw; height: 30vh; border: 1px solid rgba(86, 209, 211, 0.1); border-left-color: transparent; border-bottom-color: transparent; border-radius: 50%; filter: blur(0.35px); pointer-events: none; }
+.login-current-one { top: 13%; left: -28%; transform: rotate(-14deg); animation: login-current-flow-one 22s ease-in-out infinite alternate; }
+.login-current-two { top: 52%; right: -39%; border-color: rgba(71, 163, 209, 0.1); border-right-color: transparent; border-bottom-color: transparent; transform: rotate(12deg); animation: login-current-flow-two 27s ease-in-out infinite alternate; }
+.login-current-three { top: 31%; left: 20%; width: 57vw; height: 20vh; border-color: rgba(72, 195, 202, 0.07); border-left-color: transparent; border-bottom-color: transparent; transform: rotate(-8deg); animation: login-current-flow-three 31s ease-in-out infinite alternate-reverse; }
+.login-light-rays { position: absolute; z-index: -1; inset: -18% 0 auto; height: 68%; overflow: hidden; pointer-events: none; opacity: 0.46; }
+.login-light-rays span { position: absolute; top: -18%; height: 130%; width: 18%; background: linear-gradient(180deg, rgba(160, 243, 239, 0.13), transparent 76%); filter: blur(20px); transform: rotate(19deg); transform-origin: top center; }
+.login-light-rays span:nth-child(1) { left: 14%; animation: login-ray-shift 19s ease-in-out infinite alternate; }
+.login-light-rays span:nth-child(2) { left: 47%; opacity: 0.62; animation: login-ray-shift 25s ease-in-out infinite alternate-reverse; }
+.login-light-rays span:nth-child(3) { left: 79%; opacity: 0.4; animation: login-ray-shift 22s ease-in-out infinite alternate; }
+.login-footer { position: absolute; z-index: 10; inset: auto 1.5rem 1.25rem; color: rgba(148, 172, 191, 0.72); font-size: 0.7rem; letter-spacing: 0.02em; text-align: center; pointer-events: none; }
+.login-input { display: block; width: 100%; height: 2.85rem; border-radius: 0.55rem; border: 1px solid rgba(126, 160, 183, 0.34); background: rgba(3, 12, 23, 0.54); padding: 0 0.8rem; color: #f1f5f9; outline: none; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.login-input:focus { border-color: rgba(80, 210, 216, 0.9); background: rgba(5, 19, 32, 0.78); box-shadow: 0 0 0 3px rgba(44, 191, 200, 0.14); }
+.login-submit { display: flex; width: 100%; height: 2.9rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.55rem; background: linear-gradient(100deg, #138b9d, #1d9fb6); color: #f8fafc; font-size: 0.95rem; font-weight: 600; transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease; }
+.login-submit:hover:not(:disabled), .login-submit:focus-visible { filter: brightness(1.1); box-shadow: 0 8px 18px rgba(22, 158, 181, 0.2); transform: translateY(-1px); outline: none; }
+.login-submit:disabled { cursor: not-allowed; opacity: 0.48; }
+.login-transition { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 39%, rgba(20, 107, 132, 0.24), transparent 49%), #040b16; }
+.login-transition-wave { position: absolute; left: -25%; width: 150%; height: 42%; border-radius: 48% 52% 0 0; filter: blur(2px); }
+.login-transition-wave-a { bottom: -17%; background: linear-gradient(100deg, rgba(14, 75, 125, 0.22), rgba(46, 177, 185, 0.35), rgba(12, 76, 130, 0.18)); animation: login-wave-drift 3.6s ease-in-out infinite alternate; }
+.login-transition-wave-b { bottom: -28%; background: linear-gradient(100deg, rgba(11, 62, 108, 0.36), rgba(31, 122, 157, 0.24), rgba(9, 53, 97, 0.38)); animation: login-wave-drift 4.8s ease-in-out infinite alternate-reverse; }
+.login-transition-light { position: absolute; inset: 0; background: linear-gradient(108deg, transparent 33%, rgba(136, 241, 240, 0.12) 50%, transparent 67%); animation: login-light-pass 3.2s ease-in-out infinite; }
+.login-transition-content { min-width: min(20rem, 100%); }
+.login-flow-panel { position: relative; display: flex; align-items: center; justify-content: space-between; height: 3.1rem; margin: 1.35rem auto 0; max-width: 15.25rem; padding: 0 1.25rem; overflow: hidden; border: 1px solid rgba(115, 183, 196, 0.24); border-radius: 0.6rem; background: linear-gradient(105deg, rgba(8, 35, 55, 0.7), rgba(12, 56, 74, 0.36), rgba(7, 31, 54, 0.7)); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18), inset 0 1px rgba(199, 247, 245, 0.04); }
+.login-flow-panel::before { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 22%, rgba(91, 205, 208, 0.09) 50%, transparent 78%); animation: login-flow-sheen 4.8s ease-in-out infinite; }
+.login-flow-panel span { position: relative; z-index: 1; width: 0.34rem; height: 0.34rem; border-radius: 50%; background: rgba(153, 233, 231, 0.82); box-shadow: 0 0 7px rgba(67, 194, 201, 0.23); animation: login-tide-dot 2.2s ease-in-out infinite; }
+.login-flow-panel span:nth-child(1) { animation-delay: -1.7s; }
+.login-flow-panel span:nth-child(2) { animation-delay: -1.42s; }
+.login-flow-panel span:nth-child(3) { animation-delay: -1.14s; }
+.login-flow-panel span:nth-child(4) { animation-delay: -0.86s; }
+.login-flow-panel span:nth-child(5) { animation-delay: -0.58s; }
+.login-flow-panel span:nth-child(6) { animation-delay: -0.3s; }
+.login-flow-panel span:nth-child(7) { animation-delay: -0.02s; }
+@keyframes login-wave-drift { from { transform: translate3d(-5%, 1%, 0) rotate(-2deg); } to { transform: translate3d(5%, -2%, 0) rotate(2deg); } }
+@keyframes login-light-pass { from { transform: translateX(-36%); opacity: 0; } 42% { opacity: 1; } to { transform: translateX(36%); opacity: 0; } }
+@keyframes login-current-flow-one { from { translate: -4% 1%; } to { translate: 8% -5%; } }
+@keyframes login-current-flow-two { from { translate: 5% 3%; } to { translate: -7% -3%; } }
+@keyframes login-current-flow-three { from { translate: -5% 4%; opacity: 0.45; } to { translate: 6% -2%; opacity: 0.85; } }
+@keyframes login-ray-shift { from { translate: -7% 0; opacity: 0.42; } to { translate: 9% 4%; opacity: 0.82; } }
+@keyframes login-depth-drift { from { transform: translate3d(-3%, -1%, 0) scale(1.02); } to { transform: translate3d(4%, 3%, 0) scale(1.08); } }
+@keyframes login-flow-sheen { from { transform: translateX(-48%); opacity: 0; } 45% { opacity: 1; } to { transform: translateX(48%); opacity: 0; } }
+@keyframes login-tide-dot { 0%, 100% { transform: translate3d(-5px, 1px, 0) scale(0.76); opacity: 0.3; } 48% { transform: translate3d(5px, -3px, 0) scale(1.22); opacity: 1; } }
+
+@keyframes ocean-wave-pass { from { transform: translate3d(-6%, 1%, 0) rotate(-3deg); } to { transform: translate3d(6%, -2%, 0) rotate(3deg); } }
+
+@media (max-width: 640px) {
+  .launch-workspace { margin-left: 0; grid-template-columns: 1.8rem minmax(0, 1fr) auto; padding-right: 0.85rem; }
+  .launch-workspace-supporting { min-height: auto; }
+  .launchpad-context { padding: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .launch-workspace, .launch-workspace::after, .launch-workspace-arrow { transition: none; }
+  .panel:hover, .launch-workspace:hover, .launch-workspace:focus-visible { transform: none; }
+  .ocean-transition-wave { animation: none; }
+  .login-depth-flow, .login-wave, .login-current, .login-light-rays span, .login-transition-wave, .login-transition-light, .login-flow-panel::before, .login-flow-panel span { animation: none; }
+  .login-submit { transition: none; }
+  .login-submit:hover:not(:disabled), .login-submit:focus-visible { transform: none; }
 }

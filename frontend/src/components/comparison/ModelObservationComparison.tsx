@@ -66,7 +66,7 @@ export function ModelObservationComparison() {
         />
       </div>
 
-      <div className="rounded-lg border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+      <div className="border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
         <p className="text-[10px]" style={{ color: 'var(--os-text-3)' }}>
           Compared at <span className="mono" style={{ color: 'var(--os-text-2)' }}>{selectedMeasurement.pressure.toFixed(1)} dbar</span>
           {' '}(slider set to {selectedDepth}m)

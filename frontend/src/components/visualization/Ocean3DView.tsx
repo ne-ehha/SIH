@@ -176,7 +176,7 @@ function SurfaceLayerViz({ data, unit }: { data: SurfaceGridCell[]; unit: string
         {/* Color scale */}
         <div className="mt-2 flex items-center justify-between text-[9px]" style={{ color: 'var(--os-text-3)' }}>
           <span>{minVal.toFixed(1)} {unit}</span>
-          <div className="mx-2 h-1.5 flex-1 rounded-full bg-gradient-to-r from-blue-600 via-green-500 to-red-500" />
+          <div className="mx-2 h-1.5 flex-1" style={{ background: 'linear-gradient(to right, var(--os-diff-neg), var(--os-text-3) 50%, var(--os-diff-pos))' }} />
           <span>{maxVal.toFixed(1)} {unit}</span>
         </div>
       </div>
@@ -205,7 +205,7 @@ function DepthSliceViz({ data }: { data: DepthSliceDisplay[] }) {
           return (
             <div key={slice.depth} className="flex items-center gap-3">
               <span className="w-16 text-right text-[10px]" style={{ color: 'var(--os-text-3)' }}>{slice.depth}m</span>
-              <div className="flex-1 h-6 rounded bg-gradient-to-r from-blue-900/50 to-blue-600/30 relative overflow-hidden">
+              <div className="flex-1 h-6 relative overflow-hidden" style={{ background: 'var(--os-surface-2)' }}>
                 <div
                   className="absolute inset-y-0 left-0 rounded transition-all duration-500"
                   style={{

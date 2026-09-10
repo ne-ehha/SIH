@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D } from '@/integration';
 import { DepthInspectorScene } from '@/components/visualization/research3d/DepthInspectorScene';
+import { exportProfileCSV, exportComparisonCSV } from '@/utils/export';
+import { DepthSliceView } from '@/data/depthSlice';
+import { parseDelimitedObservations, ingestionTemplateCsv, type CsvIngestResult } from '@/data/csvIngest';
 import type { Research3DPoint } from '@/integration';
 
-type ResearchTab = 'inspector' | 'comparison' | 'profiles' | 'observations';
+type ResearchTab = 'inspector' | 'comparison' | 'profiles' | 'observations' | 'slice';
 
 export function ResearchWorkspace() {
   const [activeTab, setActiveTab] = useState<ResearchTab>('inspector');
@@ -16,7 +19,10 @@ export function ResearchWorkspace() {
     selectedTime,
     selectedDepth,
     setSelectedDepth,
-    setIsModelViewOpen,
+    verticalExaggeration,
+    setVerticalExaggeration,
+    colorScale,
+    activeLayers,
   } = useOceanStore();
 
   const {
@@ -44,6 +50,7 @@ export function ResearchWorkspace() {
     { id: 'comparison', label: 'Comparison' },
     { id: 'profiles', label: 'Profiles' },
     { id: 'observations', label: 'Observations' },
+    { id: 'slice', label: 'Depth Slice' },
   ];
 
   if (!hasSelection) {
@@ -87,13 +94,6 @@ export function ResearchWorkspace() {
           <span className="text-[11px]" style={{ color: 'var(--os-text-2)' }}>
             {selectedVariable}
           </span>
-          <button
-            onClick={() => setIsModelViewOpen(true)}
-            className="rounded border px-2 py-0.5 text-[10px] transition"
-            style={{ borderColor: 'var(--os-border-light)', color: 'var(--os-text-2)' }}
-          >
-            Full 3D View
-          </button>
         </div>
       </div>
 
@@ -218,22 +218,60 @@ export function ResearchWorkspace() {
                         unit={unit}
                         variable={selectedVariable}
                         selectedDepth={selectedDepth}
+                        verticalExaggeration={verticalExaggeration}
+                        colorScale={colorScale}
+                        renderMode="variables"
+                        layers={{
+                          argo: {
+                            visible: activeLayers.find((l) => l.id === 'observations')?.enabled ?? true,
+                            opacity: activeLayers.find((l) => l.id === 'observations')?.opacity ?? 1,
+                          },
+                          glorys: {
+                            visible: activeLayers.find((l) => l.id === 'models')?.enabled ?? true,
+                            opacity: activeLayers.find((l) => l.id === 'models')?.opacity ?? 1,
+                          },
+                          discrepancies: {
+                            visible: activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? false,
+                            opacity: activeLayers.find((l) => l.id === 'discrepancies')?.opacity ?? 0.85,
+                          },
+                          depthSlice: {
+                            visible: activeLayers.find((l) => l.id === 'depthSlice')?.enabled ?? true,
+                            opacity: activeLayers.find((l) => l.id === 'depthSlice')?.opacity ?? 1,
+                          },
+                        }}
                       />
                     </div>
 
-                    {/* Depth control — compact */}
+                    {/* Primary Research depth control — 0–500 m validated window. */}
+                    <div className="mt-3 border px-3 py-2.5" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <label className="text-[10px] font-medium" style={{ color: 'var(--os-text-2)' }}>Depth</label>
+                        <span className="mono text-[10px] tabular-nums" style={{ color: 'var(--os-argo)' }}>{selectedDepth} m</span>
+                      </div>
+                      <DepthInput value={selectedDepth} onChange={setSelectedDepth} />
+                    </div>
+
+                    {/* Vertical exaggeration — real 3D depth-axis scale control (SIH26067) */}
                     <div className="mt-2 flex items-center gap-3">
-                      <label className="text-[9px] uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--os-text-muted)' }}>Depth</label>
+                      <label
+                        className="text-[9px] uppercase tracking-wider whitespace-nowrap"
+                        style={{ color: 'var(--os-text-muted)' }}
+                        title="Stretches the water column vertically for readability. Does not alter scientific values."
+                      >
+                        Vertical exaggeration
+                      </label>
                       <input
                         type="range"
-                        min={0}
-                        max={500}
-                        step={1}
-                        value={selectedDepth}
-                        onChange={(e) => setSelectedDepth(Number(e.target.value))}
+                        min={1}
+                        max={5}
+                        step={0.5}
+                        value={verticalExaggeration}
+                        onChange={(e) => setVerticalExaggeration(Number(e.target.value))}
                         className="flex-1"
                       />
-                      <span className="mono text-[11px] w-10 text-right" style={{ color: 'var(--os-argo)' }}>{selectedDepth}m</span>
+                      <span className="mono text-[11px] w-10 text-right" style={{ color: 'var(--os-text-2)' }}>
+                        {verticalExaggeration.toFixed(1)}×
+                      </span>
                     </div>
 
                     {selectedProfilePoints.length > 0 && (
@@ -300,6 +338,16 @@ export function ResearchWorkspace() {
             <div className="mx-auto max-w-3xl p-4">
               {selectedMeasurement ? (
                 <div className="space-y-4">
+                  {/* Export button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => exportComparisonCSV(selectedMeasurement, selectedVariable, unit)}
+                      className="text-[11px] px-2 py-1 border transition"
+                      style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-bg)' }}
+                    >
+                      Export Comparison
+                    </button>
+                  </div>
                   {/* Selected depth evidence — primary readings */}
                   <div className="rounded border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
                     <div className="research-sci-label mb-2">Depth-Level Evidence</div>                      <div className="flex items-start gap-8">
@@ -440,11 +488,23 @@ export function ResearchWorkspace() {
           <div className="h-full overflow-y-auto">
             <div className="mx-auto max-w-4xl p-4">
               {selectedProfilePoints.length > 0 ? (
-                <ObservationsTable
-                  points={selectedProfilePoints}
-                  unit={unit}
-                  selectedMeasurement={selectedMeasurement}
-                />
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[13px] font-semibold" style={{ color: 'var(--os-text)' }}>Observation Records</h3>
+                    <button
+                      onClick={() => exportProfileCSV(selectedProfilePoints, selectedVariable, unit)}
+                      className="text-[11px] px-2 py-1 border transition"
+                      style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-bg)' }}
+                    >
+                      Export CSV
+                    </button>
+                  </div>
+                  <ObservationsTable
+                    points={selectedProfilePoints}
+                    unit={unit}
+                    selectedMeasurement={selectedMeasurement}
+                  />
+                </>
               ) : (
                 <div className="flex h-48 items-center justify-center">
                   <div className="text-center">
@@ -457,6 +517,26 @@ export function ResearchWorkspace() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Depth Slice Tab (SIH26067 Priority 6) ──────────── */}
+        {activeTab === 'slice' && (
+          <div className="h-full overflow-y-auto">
+            <div className="mx-auto max-w-4xl p-4 space-y-4">
+              <DepthSliceView
+                variable={selectedVariable}
+                depth={selectedDepth}
+                date={selectedDate}
+                collocationPoints={points.filter((p) => Math.abs(p.pressure - selectedDepth) <= 50)}
+                unit={unit}
+                colorScale={colorScale}
+                opacity={activeLayers.find((l) => l.id === 'models')?.opacity ?? 0.8}
+              />
+
+              {/* CSV ingestion — delimited text through the canonical architecture (Priority 8) */}
+              <CsvIngestPanel />
             </div>
           </div>
         )}
@@ -499,6 +579,82 @@ function ProvenanceRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between text-[9px]">
       <span className="uppercase tracking-wider" style={{ color: 'var(--os-text-muted)' }}>{label}</span>
       <span style={{ color: 'var(--os-text-3)' }}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * DepthInput — numeric input + range slider for depth selection.
+ * Supports: typing, Ctrl+A, backspace, delete, Enter, spinner arrows, slider.
+ * Valid range: 0–500 m.
+ */
+function DepthInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Sync external value changes (e.g., from the sidebar depth control) into
+  // text while the input is not being edited. useEffect — never a render-time
+  // ref write, which would break concurrent rendering.
+  useEffect(() => {
+    if (!isFocused) setText(String(value));
+  }, [value, isFocused]);
+
+  const commitValue = () => {
+    const num = parseFloat(text);
+    if (isNaN(num)) {
+      // Reset to current value if invalid
+      setText(String(value));
+    } else {
+      const clamped = Math.max(0, Math.min(500, Math.round(num)));
+      setText(String(clamped));
+      if (clamped !== value) onChange(clamped);
+    }
+    setIsFocused(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={0}
+        max={500}
+        step={1}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={commitValue}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitValue();
+          }
+        }}
+        className="mono w-14 border px-1.5 py-1 text-right text-[11px] tabular-nums transition-colors duration-200 focus:border-cyan-500"
+        style={{
+          background: 'var(--os-bg)',
+          border: '1px solid var(--os-border)',
+          color: 'var(--os-argo)',
+          outline: 'none',
+        }}
+      />
+      <span className="text-[10px]" style={{ color: 'var(--os-text-muted)' }}>m</span>
+      <input
+        type="range"
+        min={0}
+        max={500}
+        step={1}
+        value={value}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          setText(String(v));
+          onChange(v);
+        }}
+        className="min-w-0 flex-1 cursor-pointer accent-cyan-400 transition-opacity duration-200 hover:opacity-100 focus-visible:opacity-100"
+      />
+      <div className="flex w-16 justify-between text-[9px]" style={{ color: 'var(--os-text-muted)' }}>
+        <span>0</span>
+        <span>500 m</span>
+      </div>
     </div>
   );
 }
@@ -601,7 +757,7 @@ function ComparisonProfileChart({
           ))}
           {selectedMeasurement && (
             <g>
-              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#d4a843" strokeWidth="1" strokeDasharray="3 2" />
+              <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#06b6d4" strokeWidth="1" strokeDasharray="3 2" />
               <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r={3.5} fill="none" stroke="#f8fafc" strokeWidth="1" />
               <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={3.5} fill="none" stroke="#f8fafc" strokeWidth="1" />
             </g>
@@ -689,7 +845,7 @@ function VerticalProfileChart({
             </g>
           ))}
           {selectedMeasurement && (
-            <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#d4a843" strokeWidth="1" strokeDasharray="3 2" />
+            <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#06b6d4" strokeWidth="1" strokeDasharray="3 2" />
           )}
           <line x1={padL + 8} y1={chartH - 6} x2={padL + 24} y2={chartH - 6} stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 3" />
           <text x={padL + 28} y={chartH - 3.5} fill="#94a3b8" fontSize="9">Argo</text>
@@ -760,6 +916,129 @@ function ObservationsTable({
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ── CSV Ingestion Panel (SIH26067 Priority 8) ────────────────────
+
+/**
+ * CsvIngestPanel — delimited-text ingestion UI.
+ *
+ * Loads user-supplied CSV/delimited observation files through the canonical
+ * OceanDataRecord pipeline. Parsed records are shown with provenance and
+ * rejected rows are reported — never silently dropped and never imputed.
+ * This panel does NOT inject parsed values into the scientific views; it
+ * registers them as an auxiliary source so existing views stay truthful.
+ */
+function CsvIngestPanel() {
+  const [result, setResult] = useState<CsvIngestResult | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    try {
+      const text = await file.text();
+      // Canonical column layout (see ingestionTemplateCsv). Unknown layouts
+      // are reported as rejected rows rather than guessed.
+      const parsed = parseDelimitedObservations(text, 'csv-user', {
+        time: 'time',
+        latitude: 'latitude',
+        longitude: 'longitude',
+        pressure: 'pressure',
+        depth: 'depth',
+        platform: 'platform',
+        qualityFlag: 'quality_flag',
+        values: { temperature: 'temperature', salinity: 'salinity' },
+      });
+      setFileName(file.name);
+      setResult(parsed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to read file');
+    }
+  };
+
+  const downloadTemplate = () => {
+    const blob = new Blob([ingestionTemplateCsv()], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'oceanscope_ingestion_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="border border-[var(--os-border)] bg-[var(--os-surface)]">
+      <header className="border-b border-[var(--os-border)] px-3 py-2">
+        <div className="text-[13px] font-semibold text-[var(--os-text)]">Delimited-text ingestion (CSV)</div>
+        <div className="text-[10px] text-[var(--os-text-3)] mt-0.5">
+          Load external observation data through the canonical OceanDataRecord pipeline. Parsed rows are provenance-tracked; rejected rows are reported.
+        </div>
+      </header>
+      <div className="p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <label
+            className="text-[11px] px-2 py-1 border cursor-pointer transition"
+            style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-bg)' }}
+          >
+            Choose CSV file
+            <input
+              type="file"
+              accept=".csv,.txt,.tsv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleFile(f);
+              }}
+            />
+          </label>
+          <button
+            onClick={downloadTemplate}
+            className="text-[11px] px-2 py-1 border transition"
+            style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-bg)' }}
+          >
+            Download template
+          </button>
+          {fileName && <span className="mono text-[10px] text-[var(--os-text-3)]">{fileName}</span>}
+        </div>
+
+        {error && <p className="text-[11px] text-red-400">{error}</p>}
+
+        {result && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3 text-[11px]">
+              <span style={{ color: 'var(--os-text-2)' }}>
+                Accepted <span className="mono" style={{ color: 'var(--os-argo)' }}>{result.records.length}</span> records
+              </span>
+              <span style={{ color: 'var(--os-text-2)' }}>
+                Rejected <span className="mono" style={{ color: result.rejected.length > 0 ? 'var(--os-diff-neg)' : 'var(--os-text-3)' }}>{result.rejected.length}</span> rows
+              </span>
+              <span className="text-[var(--os-text-3)]">delimiter “{result.delimiter === '\t' ? 'TAB' : result.delimiter}”</span>
+            </div>
+            {result.rejected.length > 0 && (
+              <div className="max-h-32 overflow-y-auto border border-[var(--os-border)] bg-[var(--os-bg)] px-2 py-1.5">
+                {result.rejected.slice(0, 20).map((r, i) => (
+                  <div key={i} className="mono text-[10px] text-[var(--os-text-3)]">
+                    row {r.row}: {r.reason}
+                  </div>
+                ))}
+                {result.rejected.length > 20 && (
+                  <div className="text-[10px] text-[var(--os-text-muted)] mt-1">
+                    …and {result.rejected.length - 20} more
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="text-[9px] text-[var(--os-text-muted)] leading-relaxed">
+              Parsed records enter the canonical architecture for export and downstream adapters.
+              They are clearly labelled as user-declared data and never displayed as OceanScope
+              measurements or merged into the validated GLORYS × Argo collocation dataset.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -132,32 +132,30 @@ export function SolutionsPanel() {
     <div className="border border-[var(--os-border)] bg-[var(--os-surface)]">
       <header className="border-b border-[var(--os-border)] px-4 py-3">
         <div className="text-[13px] font-semibold text-[var(--os-text)]">
-          Discrepancy response
+          Diagnostic Investigation
         </div>
         <div className="mt-1 text-[12px] text-[var(--os-text-2)]">
-          Diagnostic evidence for this location · nearby collocations ·{' '}
-          {formatLatitude(selectedLocation.latitude)} · {formatLongitude(selectedLocation.longitude)} ·{' '}
-          {selectedDepth} m
+          Evidence-based analysis for {formatLatitude(selectedLocation.latitude)} · {formatLongitude(selectedLocation.longitude)} · {selectedDepth} m
         </div>
         <p className="mt-2 text-[11px] text-[var(--os-text-3)] leading-relaxed max-w-3xl">
-          Analysis uses nearby GLORYS12V1 × Argo collocations around the selected coordinates.
-          It does not establish that a single Argo float caused the pattern, and candidate
-          explanations are investigation pathways—not confirmed physical causes.
+          This analysis uses nearby GLORYS12V1 × Argo collocations. Candidate explanations
+          are investigation pathways, not confirmed physical causes. The collocated sample
+          establishes the discrepancy but does not by itself establish physical causation.
         </p>
       </header>
 
       <div className="p-4 space-y-5">
-        {/* Fingerprint */}
+        {/* Observed evidence */}
         <section>
-          <SectionLabel>Discrepancy fingerprint</SectionLabel>
+          <SectionLabel>Observed evidence</SectionLabel>
           <div className="mt-2 border border-[var(--os-border)] bg-[var(--os-bg)] px-4 py-3">
-            <div className="mono text-[18px] font-semibold text-[var(--os-text)] tracking-wide">
+            <div className="mono text-[16px] font-semibold text-[var(--os-text)] tracking-wide">
               {fingerprint}
             </div>
             <div className="mt-2 text-[13px] text-[var(--os-text-2)]">
-              Leading candidate: {diagnostic.possibleCause}
+              Candidate interpretation: {diagnostic.possibleCause}
               <span className="text-[var(--os-text-3)]"> · </span>
-              <span className="capitalize">{diagnostic.confidence} confidence</span>
+              <span className="capitalize">{diagnostic.confidence} confidence from the diagnostics response</span>
             </div>
           </div>
         </section>
@@ -180,12 +178,12 @@ export function SolutionsPanel() {
           )}
         </section>
 
-        {/* Candidate explanations */}
+        {/* Candidate explanations / hypotheses */}
         <section>
-          <SectionLabel>Candidate explanations</SectionLabel>
+          <SectionLabel>Possible explanations / hypotheses</SectionLabel>
           <p className="mt-1 text-[12px] text-[var(--os-text-3)]">
-            Returned by the diagnostics API. Treat as hypotheses supported by available
-            evidence—not proven causes.
+            These are candidate explanations supported by available evidence.
+            They are not proven physical causes.
           </p>
           <div className="mt-2 space-y-2">
             {causes.map((cause, i) => (
@@ -210,17 +208,17 @@ export function SolutionsPanel() {
           </div>
         </section>
 
-        {/* Recommended investigation pathway */}
+        {/* Diagnostics-provided follow-up */}
         <section>
-          <SectionLabel>Recommended investigation</SectionLabel>
+          <SectionLabel>Research follow-up</SectionLabel>
           <p className="mt-1 text-[12px] text-[var(--os-text-3)]">
-            Investigation pathway from the diagnostics workflow—not an automatic scientific conclusion.
+            A diagnostics-provided next analysis for researcher review—not an automatic scientific conclusion or directive.
           </p>
           {solution ? (
             <div className="mt-2 border border-[var(--os-border)] bg-[var(--os-bg)] px-4 py-3 space-y-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--os-text-3)]">
-                  Pathway
+                  Suggested analysis
                 </div>
                 <p className="mt-1 text-[14px] text-[var(--os-text)] leading-relaxed">
                   {solution.recommendedTest}
@@ -228,7 +226,7 @@ export function SolutionsPanel() {
               </div>
               <div className="border-t border-[var(--os-border)] pt-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--os-text-3)]">
-                  Expected outcome
+                  Expected result
                 </div>
                 <p className="mt-1 text-[13px] text-[var(--os-text-2)] leading-relaxed">
                   {solution.expectedOutcome}
@@ -242,14 +240,32 @@ export function SolutionsPanel() {
           )}
         </section>
 
-        {/* Scientific caution from API */}
+        {/* Scientific limitation */}
         <section>
-          <SectionLabel>Scientific caution</SectionLabel>
+          <SectionLabel>Limitations</SectionLabel>
           <div className="mt-2 border border-[var(--os-border)] bg-[var(--os-bg)] px-4 py-3">
-            <p className="text-[13px] text-[var(--os-text-2)] leading-relaxed italic">
-              {solution?.caution ||
-                'These are candidate explanations supported by available evidence. They do not establish physical causation.'}
-            </p>
+            <ul className="space-y-1.5 text-[12px] text-[var(--os-text-2)] leading-relaxed">
+              <li className="flex gap-2">
+                <span className="shrink-0" style={{ color: 'var(--os-text-muted)' }}>•</span>
+                <span>Observations exist only on sampled dates; January 2024 is a limited temporal window.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="shrink-0" style={{ color: 'var(--os-text-muted)' }}>•</span>
+                <span>Available collocated observations are not continuous global coverage.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="shrink-0" style={{ color: 'var(--os-text-muted)' }}>•</span>
+                <span>Diagnostic causes remain hypotheses; additional independent observations are required.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="shrink-0" style={{ color: 'var(--os-text-muted)' }}>•</span>
+                <span>Extreme profiles can affect aggregate metrics.</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="shrink-0" style={{ color: 'var(--os-text-muted)' }}>•</span>
+                <span>Targeted model diagnostics are required before any correction is proposed.</span>
+              </li>
+            </ul>
           </div>
         </section>
       </div>
@@ -261,7 +277,7 @@ function WorkspaceShell({ children }: { children: ReactNode }) {
   return (
     <div className="border border-[var(--os-border)] bg-[var(--os-surface)] min-h-[240px]">
       <header className="border-b border-[var(--os-border)] px-4 py-3">
-        <div className="text-[13px] font-semibold text-[var(--os-text)]">Discrepancy response</div>
+        <div className="text-[13px] font-semibold text-[var(--os-text)]">Investigation evidence</div>
         <div className="mt-0.5 text-[12px] text-[var(--os-text-2)]">
           Diagnostic evidence for this location
         </div>

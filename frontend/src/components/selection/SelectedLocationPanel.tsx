@@ -3,46 +3,50 @@ import { formatLatitude, formatLongitude, formatDepth } from '@/utils/coordinate
 import { variables } from '@/config/variables';
 import { regions } from '@/config/regions';
 
-const HYCOM_DATE_START = '2026-08-26';
-const HYCOM_DATE_END = '2026-09-01';
-
-function isHycomDate(date: string): boolean {
-  return date >= HYCOM_DATE_START && date <= HYCOM_DATE_END;
-}
-
 export function SelectedLocationPanel() {
   const {
     selectedLocation,
     selectedDepth,
     selectedVariable,
     selectedDate,
-    selectedTime,
     selectedRegion,
-    setIsModelViewOpen,
+    selectedObservationId,
+    setWorkspaceMode,
   } = useOceanStore();
 
   const variableInfo = variables.find((v) => v.id === selectedVariable);
   const regionInfo = regions.find((r) => r.id === selectedRegion);
   const hasSelection = selectedLocation !== null;
-  const isHycom = isHycomDate(selectedDate);
+  const hasObservation = selectedObservationId !== null;
 
-  // Parse observation context if available
-  const { selectedObservationId } = useOceanStore();
+  // Parse platform and cycle from observation ID (argo_{platform}_{cycle})
+  let platformLabel = '';
+  let cycleLabel = '';
+  if (selectedObservationId) {
+    const parts = selectedObservationId.split('_');
+    if (parts.length >= 3) {
+      platformLabel = parts[1];
+      cycleLabel = parts[2];
+    }
+  }
 
   return (
     <div className="bg-[var(--os-surface)] border border-[var(--os-border)] w-full">
       {/* Header */}
       <div className="px-2.5 py-1.5 border-b border-[var(--os-border)]">
         <span className="text-[12px] font-semibold tracking-wide uppercase text-[var(--os-text-3)]">
-          {selectedObservationId ? 'Selected Observation' : 'Selected Location'}
+          {hasObservation ? 'Profile Inspector' : 'Selected Location'}
         </span>
       </div>
 
-      {/* Observation ID */}
-      {selectedObservationId && (
+      {/* Observation identity */}
+      {hasObservation && (
         <div className="px-2.5 py-2 border-b border-[var(--os-border)]">
           <div className="mono text-[12px] text-[var(--os-argo)] font-medium">
-            {selectedObservationId.replace('argo_', '').replace('_', ' / Cycle ')}
+            ARGO {platformLabel}
+          </div>
+          <div className="text-[10px] text-[var(--os-text-3)] mt-0.5">
+            Cycle {cycleLabel} · real Argo profile
           </div>
         </div>
       )}
@@ -52,25 +56,46 @@ export function SelectedLocationPanel() {
         <MetaRow label="Latitude" value={hasSelection ? formatLatitude(selectedLocation.latitude) : '—'} active={hasSelection} />
         <MetaRow label="Longitude" value={hasSelection ? formatLongitude(selectedLocation.longitude) : '—'} active={hasSelection} />
         <div className="border-t border-[var(--os-border)] my-0.5" />
-        <MetaRow label="Depth" value={formatDepth(selectedDepth)} />
-        <MetaRow label="Variable" value={variableInfo?.label || '—'} />
-        <MetaRow label="Date" value={selectedDate || '—'} mono />
-        <MetaRow label="Time" value={selectedTime ? `${selectedTime} UTC` : '—'} mono />
+        <MetaRow label="Depth (requested)" value={formatDepth(selectedDepth)} />
+        <MetaRow label="Variable" value={variableInfo ? `${variableInfo.label} (${variableInfo.unit})` : '—'} />
+        <MetaRow label="Observation date" value={selectedDate || '—'} mono />
         <MetaRow label="Region" value={regionInfo?.name || '—'} />
       </div>
 
-      {/* Action */}
-      <div className="px-2.5 py-2 border-t border-[var(--os-border)]">
-        <button
-          onClick={() => setIsModelViewOpen(true)}
-          disabled={!hasSelection}
-          className="w-full rounded-sm border border-[var(--os-border)] bg-[var(--os-bg)] px-3 py-1.5 text-[11px] text-[var(--os-text-2)] transition hover:border-[var(--os-border-light)] hover:text-[var(--os-text)] disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          {isHycom ? 'View 3D Model' : 'View Research 3D'}
-        </button>
-        <p className="mt-1 text-center text-[9px] text-[var(--os-text-muted)]">
-          {isHycom ? 'HYCOM operational (Aug 26 – Sep 1, 2026)' : 'GLORYS × Argo collocated'}
+      {/* Difference convention */}
+      <div className="px-2.5 py-1.5 border-t border-[var(--os-border)]">
+        <MetaRow label="Convention" value="GLORYS − Argo" mono />
+        <p className="text-[9px] text-[var(--os-text-muted)] mt-0.5">
+          Positive = model higher than observation
         </p>
+      </div>
+
+      {/* Action — explicit Inspect Profile (never auto-navigates on marker click) */}
+      <div className="px-2.5 py-2 border-t border-[var(--os-border)]">
+        {hasObservation ? (
+          <>
+            <button
+              onClick={() => setWorkspaceMode('research')}
+              className="w-full rounded-sm px-3 py-1.5 text-[11px] font-semibold transition"
+              style={{
+                background: 'var(--os-accent)',
+                color: '#fff',
+                border: '1px solid var(--os-accent)',
+              }}
+            >
+              Inspect Profile
+            </button>
+            <p className="mt-1 text-center text-[9px] text-[var(--os-text-muted)]">
+              Open in Research workspace for 3D inspection
+            </p>
+          </>
+        ) : (
+          <p className="text-center text-[10px] py-1.5 text-[var(--os-text-muted)] leading-relaxed">
+            Click a cyan observation marker to select a real Argo profile.
+            <br />
+            Arbitrary globe clicks are navigation only.
+          </p>
+        )}
       </div>
     </div>
   );

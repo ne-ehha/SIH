@@ -39,19 +39,30 @@
  * It is NOT bathymetry or ocean floor data.
  */
 
-import { useState, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, GizmoHelper, GizmoViewport, Html } from '@react-three/drei';
+import { useState, useMemo, useRef, useEffect, Component, type MutableRefObject, type ReactNode } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { Research3DPoint } from '@/integration';
 import { findNearestResearchMeasurement } from '@/integration/researchSelection';
+import type { ColorScaleConfig } from '@/types/ocean';
+import {
+  valueToRgb,
+  valueToColor,
+  sanitizeRange,
+  logScaleAvailable,
+  legendTicks,
+  paletteGradient,
+  type ScaleTransformConfig,
+} from '@/config/colorScales';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Maximum reference depth for the scene (dbar). Labels go to 500m. */
 const MAX_DEPTH_REF = 500;
 
-/** Scene height in world units for MAX_DEPTH_REF dbar */
+/** Scene height in world units for MAX_DEPTH_REF dbar at 1× vertical exaggeration */
 const SCENE_DEPTH = 5.0;
 
 /** X offset of Argo profile from center */
@@ -69,6 +80,149 @@ const PYRAMID_SURFACE_HALF_Z = 1.2;
 /** Scale factor for difference indicator width (per unit difference) */
 const DIFF_SCALE = 0.3;
 
+// ── Scientific field coloring (SIH26067: real color-scale controls) ─────────
+
+/** Which field the 3D colors encode: the measured variables or the signed difference. */
+export type FieldRenderMode = 'variables' | 'difference';
+
+/**
+ * Effective normalization range for a rendered field, computed from the REAL
+ * profile values. Used by BOTH the 3D scene and the synchronized colorbar so
+ * the legend always matches the renderer exactly.
+ *
+ * - variables mode: min/max of all Argo + GLORYS values in the profile.
+ * - difference mode: symmetric ±max|GLORYS − Argo| (diverging convention).
+ * - manual (auto = false) ranges extend the data range but never invert it.
+ */
+export function computeFieldRange(
+  profilePoints: Research3DPoint[],
+  mode: FieldRenderMode,
+  colorScale?: Pick<ColorScaleConfig, 'auto' | 'min' | 'max'>,
+): { min: number; max: number } {
+  if (profilePoints.length === 0) return { min: 0, max: 1 };
+  let lo: number;
+  let hi: number;
+  if (mode === 'difference') {
+    const maxAbs = Math.max(...profilePoints.map((p) => Math.abs(p.difference)));
+    lo = -maxAbs;
+    hi = maxAbs;
+  } else {
+    const values = profilePoints.flatMap((p) => [p.argoValue, p.glorysValue]).filter(Number.isFinite);
+    if (values.length === 0) return { min: 0, max: 1 };
+    lo = Math.min(...values);
+    hi = Math.max(...values);
+  }
+  if (colorScale && !colorScale.auto) {
+    // Manual range participates, but a degenerate manual range must not
+    // collapse the scale (sanitizeRange enforces min < max).
+    const manual = sanitizeRange(colorScale.min, colorScale.max, { min: lo, max: hi });
+    lo = Math.min(lo, manual.min);
+    hi = Math.max(hi, manual.max);
+  }
+  return lo < hi ? { min: lo, max: hi } : { min: lo, max: lo + 1 };
+}
+
+/**
+ * Resolve the exact ScaleTransformConfig the 3D renderer uses.
+ * Returns null when the scene should fall back to identity source colors
+ * (no color-scale configuration provided).
+ *
+ * Log mode is only applied when the field actually supports it (strictly
+ * positive finite values); otherwise the renderer silently falls back to
+ * linear and the UI explains why (see Sidebar / workspace colorbar note).
+ */
+export function sceneScaleConfig(
+  profilePoints: Research3DPoint[],
+  colorScale: ColorScaleConfig | undefined,
+  mode: FieldRenderMode,
+): { config: ScaleTransformConfig; range: { min: number; max: number }; logApplied: boolean } | null {
+  if (!colorScale) return null;
+  const range = computeFieldRange(profilePoints, mode, colorScale);
+  let logarithmic = colorScale.logarithmic;
+  if (logarithmic) {
+    const values =
+      mode === 'difference'
+        ? profilePoints.map((p) => p.difference)
+        : profilePoints.flatMap((p) => [p.argoValue, p.glorysValue]);
+    // Signed difference fields (containing ≤ 0) cannot be log-mapped —
+    // we never shift data by an arbitrary constant to force log to work.
+    logarithmic = logScaleAvailable(values);
+  }
+  return {
+    config: {
+      paletteId: colorScale.paletteId,
+      min: range.min,
+      max: range.max,
+      logarithmic,
+    },
+    range,
+    logApplied: logarithmic,
+  };
+}
+
+/**
+ * Layer visibility/opacity state for the 3D scene, resolved from the
+ * canonical layer manager. Every entry is a real rendering control.
+ */
+export interface SceneLayers {
+  argo: { visible: boolean; opacity: number };
+  glorys: { visible: boolean; opacity: number };
+  discrepancies: { visible: boolean; opacity: number };
+  depthSlice: { visible: boolean; opacity: number };
+}
+
+export const DEFAULT_SCENE_LAYERS: SceneLayers = {
+  argo: { visible: true, opacity: 1 },
+  glorys: { visible: true, opacity: 1 },
+  discrepancies: { visible: true, opacity: 1 },
+  depthSlice: { visible: true, opacity: 1 },
+};
+
+/**
+ * React error boundary INSIDE the R3F Canvas: a runtime exception in the
+ * 3D subtree (geometry, material, raycasting) must degrade to an inline
+ * message — it must never unmount the whole application (blank screen).
+ */
+class SceneErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    // Surface the real cause in the console — root causes stay visible.
+    console.error('[DepthInspectorScene] 3D scene error:', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Html center style={{ pointerEvents: 'none' }}>
+          <div
+            style={{
+              background: 'rgba(10, 14, 26, 0.92)',
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+              borderRadius: '6px',
+              padding: '10px 14px',
+              color: '#fca5a5',
+              fontSize: '11px',
+              maxWidth: '280px',
+              textAlign: 'center',
+            }}
+          >
+            3D scene could not render this profile.
+            <div style={{ fontSize: '9px', marginTop: '4px', color: '#94a3b8' }}>
+              The rest of the application is unaffected — adjust depth or select another profile.
+            </div>
+          </div>
+        </Html>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface DepthInspectorSceneProps {
@@ -78,6 +232,23 @@ interface DepthInspectorSceneProps {
   variable: string;
   /** Selected depth from the slider (0–500 dbar) */
   selectedDepth: number;
+  /** Vertical exaggeration factor (1–5). Stretches the depth axis. */
+  verticalExaggeration?: number;
+  /** Canonical color-scale config — palette/range/log drive real 3D colors. */
+  colorScale?: ColorScaleConfig;
+  /** Field the colors encode: measured variables or the signed difference. */
+  renderMode?: FieldRenderMode;
+  /** Layer manager wiring — visibility/opacity are real rendering controls. */
+  layers?: SceneLayers;
+  /** Set false to suppress the synchronized colorbar (used by compact hosts). */
+  showColorbar?: boolean;
+  viewControlsRef?: MutableRefObject<InspectorViewControls | null>;
+}
+
+export interface InspectorViewControls {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetView: () => void;
 }
 
 /** A record with computed Y position */
@@ -88,25 +259,32 @@ interface PositionedRecord {
   glorysX: number;
 }
 
+interface InspectorInitialView {
+  position: THREE.Vector3;
+  target: THREE.Vector3;
+}
+
 // ── Coordinate helpers ───────────────────────────────────────────────────────
 
-/** Convert pressure (dbar) to Y scene coordinate (depth increases downward) */
-function pressureToY(pressure: number): number {
-  return -(pressure / MAX_DEPTH_REF) * SCENE_DEPTH;
+/** Convert pressure (dbar) to Y scene coordinate (depth increases downward).
+ *  verticalExaggeration stretches the water column vertically (SIH26067 control).
+ *  It rescales the depth axis only — it never rescales or distorts data values. */
+function pressureToY(pressure: number, verticalExaggeration = 1): number {
+  return -(pressure / MAX_DEPTH_REF) * SCENE_DEPTH * verticalExaggeration;
 }
 
 /**
- * INVERTED pyramid half-width at a given Y position.
- * Wide at surface (Y=0), narrow at depth (Y=-SCENE_DEPTH).
+ * INVERTED pyramid half-width at a given Y position for a given exaggeration.
+ * Wide at surface (Y=0), narrow at depth (Y=-SCENE_DEPTH × exaggeration).
  */
-function invertedPyramidHalfWidth(y: number): number {
-  const t = Math.min(Math.abs(y) / SCENE_DEPTH, 1);
+function invertedPyramidHalfWidth(y: number, verticalExaggeration = 1): number {
+  const t = Math.min(Math.abs(y) / (SCENE_DEPTH * verticalExaggeration), 1);
   return PYRAMID_SURFACE_HALF_WIDTH * (1 - t);
 }
 
 /** INVERTED pyramid half-depth in Z at a given Y position. */
-function invertedPyramidHalfZ(y: number): number {
-  const t = Math.min(Math.abs(y) / SCENE_DEPTH, 1);
+function invertedPyramidHalfZ(y: number, verticalExaggeration = 1): number {
+  const t = Math.min(Math.abs(y) / (SCENE_DEPTH * verticalExaggeration), 1);
   return PYRAMID_SURFACE_HALF_Z * (1 - t);
 }
 
@@ -132,8 +310,30 @@ function createLayerShape(halfWidth: number, halfZ: number): THREE.Shape {
   return shape;
 }
 
+/** Unit square shape centered at origin — reused via mesh scale (churn-free slice geometry). */
+function createUnitSquareShape(): THREE.Shape {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.5, -0.5);
+  shape.lineTo(0.5, -0.5);
+  shape.lineTo(0.5, 0.5);
+  shape.lineTo(-0.5, 0.5);
+  shape.closePath();
+  return shape;
+}
+
+/** Unit square outline as a line geometry (4 corners, closed loop). */
+function createUnitSquareOutline(): THREE.BufferGeometry {
+  return new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-0.5, -0.5, 0),
+    new THREE.Vector3(0.5, -0.5, 0),
+    new THREE.Vector3(0.5, 0.5, 0),
+    new THREE.Vector3(-0.5, 0.5, 0),
+    new THREE.Vector3(-0.5, -0.5, 0),
+  ]);
+}
+
 /** Transparent four-sided water volume using the existing inverted-pyramid taper. */
-function createWaterVolumeGeometry(): THREE.BufferGeometry {
+function createWaterVolumeGeometry(verticalExaggeration = 1): THREE.BufferGeometry {
   const segments = 16;
   const positions: number[] = [];
   const colors: number[] = [];
@@ -150,11 +350,13 @@ function createWaterVolumeGeometry(): THREE.BufferGeometry {
     );
   };
 
+  const sceneDepth = SCENE_DEPTH * verticalExaggeration;
+
   for (let segment = 0; segment < segments; segment += 1) {
     const start = segment / segments;
     const end = (segment + 1) / segments;
-    const startY = -SCENE_DEPTH * start;
-    const endY = -SCENE_DEPTH * end;
+    const startY = -sceneDepth * start;
+    const endY = -sceneDepth * end;
     const startWidth = PYRAMID_SURFACE_HALF_WIDTH * (1 - start);
     const startZ = PYRAMID_SURFACE_HALF_Z * (1 - start);
     const endWidth = PYRAMID_SURFACE_HALF_WIDTH * (1 - end);
@@ -256,9 +458,9 @@ function createParticleGeometry(): THREE.BufferGeometry {
 
 // ── Color helpers ────────────────────────────────────────────────────────────
 
-/** Argo observation: bright cyan/blue */
+/** Argo observation: bright cyan/blue (identity color when no color scale is active) */
 const ARGO_COLOR = '#22d3ee';
-/** GLORYS model: vivid purple/violet */
+/** GLORYS model: vivid purple/violet (identity color when no color scale is active) */
 const GLORYS_COLOR = '#a855f7';
 const DIFF_POS_COLOR = '#f59e0b';
 const DIFF_NEG_COLOR = '#3b82f6';
@@ -270,8 +472,8 @@ const SELECTED_SLICE_COLOR = '#22d3ee';
  * Semi-transparent inspected water volume. It is deliberately a 0-500 m
  * cutaway volume, not bathymetry or a synthetic ocean data layer.
  */
-function WaterVolume() {
-  const geometry = useMemo(() => createWaterVolumeGeometry(), []);
+function WaterVolume({ verticalExaggeration = 1 }: { verticalExaggeration?: number }) {
+  const geometry = useMemo(() => createWaterVolumeGeometry(verticalExaggeration), [verticalExaggeration]);
 
   return (
     <mesh geometry={geometry} renderOrder={0}>
@@ -435,7 +637,7 @@ function UnderwaterParticles() {
 }
 
 /** Inverted pyramid frame with a strong surface rim and four visible sloping edges. */
-function InvertedPyramidFrame() {
+function InvertedPyramidFrame({ verticalExaggeration = 1 }: { verticalExaggeration?: number }) {
   const geometry = useMemo(() => {
     const points: THREE.Vector3[] = [];
     const sw = PYRAMID_SURFACE_HALF_WIDTH;
@@ -446,7 +648,7 @@ function InvertedPyramidFrame() {
       new THREE.Vector3(sw, 0, sz),
       new THREE.Vector3(-sw, 0, sz),
     ];
-    const apex = new THREE.Vector3(0, -SCENE_DEPTH, 0);
+    const apex = new THREE.Vector3(0, -SCENE_DEPTH * verticalExaggeration, 0);
     for (const corner of surfaceCorners) {
       points.push(corner.clone(), apex.clone());
     }
@@ -454,14 +656,10 @@ function InvertedPyramidFrame() {
       points.push(surfaceCorners[i].clone(), surfaceCorners[(i + 1) % 4].clone());
     }
     return new THREE.BufferGeometry().setFromPoints(points);
-  }, []);
+  }, [verticalExaggeration]);
 
   return (
     <group>
-      {/* Subtle outer glow makes the water-column silhouette readable on dark backgrounds. */}
-      <lineSegments geometry={geometry}>
-        <lineBasicMaterial color="#0ea5e9" transparent opacity={0.16} />
-      </lineSegments>
       {/* Primary high-contrast frame: surface rim plus the four edges converging at 500 m. */}
       <lineSegments geometry={geometry}>
         <lineBasicMaterial color="#7dd3fc" transparent opacity={0.65} />
@@ -528,32 +726,32 @@ function SurfacePlane() {
 }
 
 /** Translucent depth reference layers following inverted pyramid taper. */
-function DepthLayers() {
+function DepthLayers({ verticalExaggeration = 1 }: { verticalExaggeration?: number }) {
   const layers = useMemo(() => {
-    // 100m increments, excluding 0m (surface is the pyramid base) and 500m (apex)
+    // 100m increments, excluding 0m (surface is the pyramid base) and 500m (apex).
+    // Geometry is declarative (<shapeGeometry>/<lineSegments>) so exaggeration
+    // changes rebuild through R3F's normal reconciliation — no leaked objects.
     const depths = [100, 200, 300, 400];
     return depths.map((d) => {
-      const y = pressureToY(d);
-      const hw = invertedPyramidHalfWidth(y);
-      const hz = invertedPyramidHalfZ(y);
-      const outline = createLayerOutline(y, hw, hz);
-      const outlineLine = new THREE.Line(
-        outline,
-        new THREE.LineBasicMaterial({ color: '#38bdf8', transparent: true, opacity: 0.22 }),
-      );
-      return { depth: d, y, hw, hz, shape: createLayerShape(hw, hz), outlineLine };
+      const y = pressureToY(d, verticalExaggeration);
+      const hw = invertedPyramidHalfWidth(y, verticalExaggeration);
+      const hz = invertedPyramidHalfZ(y, verticalExaggeration);
+      return { depth: d, y, hw, hz };
     });
-  }, []);
+  }, [verticalExaggeration]);
 
   return (
     <>
       {layers.map((layer) => (
         <group key={layer.depth}>
           <mesh position={[0, layer.y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <shapeGeometry args={[layer.shape]} />
+            <shapeGeometry args={[createLayerShape(layer.hw, layer.hz)]} />
             <meshBasicMaterial color="#0c4a6e" transparent opacity={0.06} side={THREE.DoubleSide} />
           </mesh>
-          <primitive object={layer.outlineLine} />
+          <lineSegments position={[0, layer.y, 0]}>
+            <edgesGeometry args={[createLayerOutline(layer.y, layer.hw, layer.hz)]} />
+            <lineBasicMaterial color="#38bdf8" transparent opacity={0.22} />
+          </lineSegments>
           <Html position={[-layer.hw - 0.12, layer.y, 0]} center style={{ pointerEvents: 'none' }}>
             <span style={{ color: '#7dd3fc', fontSize: '8px', fontFamily: 'monospace', opacity: 0.72, whiteSpace: 'nowrap' }}>
               {layer.depth}m
@@ -568,43 +766,61 @@ function DepthLayers() {
 /**
  * Selected depth slice — brighter translucent plane at the slider depth.
  * Follows inverted pyramid taper at the exact slider depth.
+ *
+ * Robustness (blank-screen fix): the slice plane is rebuilt declaratively on
+ * every depth change. Creating fresh THREE objects and passing them through
+ * <primitive> at slider-drag rate forces R3F to reconstruct instances while
+ * the same objects are still attached in the scene graph — a known source of
+ * runtime exceptions. Plain <mesh>/<lineSegments> elements let R3F handle
+ * attachment, disposal and reconciliation safely.
  */
-function SelectedDepthSlice({ selectedDepth }: { selectedDepth: number }) {
-  const geometry = useMemo(() => {
-    const y = pressureToY(selectedDepth);
-    const hw = invertedPyramidHalfWidth(y);
-    const hz = invertedPyramidHalfZ(y);
-    return createLayerOutline(y, hw, hz);
-  }, [selectedDepth]);
+function SelectedDepthSlice({
+  selectedDepth,
+  verticalExaggeration = 1,
+  visible = true,
+  opacity = 1,
+}: {
+  selectedDepth: number;
+  verticalExaggeration?: number;
+  visible?: boolean;
+  opacity?: number;
+}) {
+  // Churn-free geometry: one unit square (fill + outline) created once, then
+  // positioned/scaled per depth. Scale and position are pure matrix updates —
+  // dragging the slider never rebuilds or re-attaches GPU buffers.
+  // (Hooks stay above the early return — rules-of-hooks.)
+  const unitFill = useMemo(() => new THREE.ShapeGeometry(createUnitSquareShape()), []);
+  const unitOutline = useMemo(() => createUnitSquareOutline(), []);
 
-  const fillGeometry = useMemo(() => {
-    const y = pressureToY(selectedDepth);
-    const hw = invertedPyramidHalfWidth(y);
-    const hz = invertedPyramidHalfZ(y);
-    return new THREE.ShapeGeometry(createLayerShape(hw, hz));
-  }, [selectedDepth]);
+  // Safe geometry inputs: finite depth, positive half-extents. An invalid
+  // input renders nothing — never an invalid Three.js geometry.
+  const y = pressureToY(selectedDepth, verticalExaggeration);
+  const hw = invertedPyramidHalfWidth(y, verticalExaggeration);
+  const hz = invertedPyramidHalfZ(y, verticalExaggeration);
+  const geometryValid =
+    Number.isFinite(y) && Number.isFinite(hw) && Number.isFinite(hz) && hw > 0 && hz > 0;
 
-  const edgeObj = useMemo(() => {
-    const material = new THREE.LineBasicMaterial({ color: '#67e8f9', transparent: true, opacity: 1 });
-    return new THREE.Line(geometry, material);
-  }, [geometry]);
+  if (!visible || !geometryValid) return null;
 
-  const y = pressureToY(selectedDepth);
+  const safeOpacity = Math.max(0, Math.min(1, Number.isFinite(opacity) ? opacity : 1));
 
   return (
     <group>
-      {/* Filled translucent plane */}
-      <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <primitive object={fillGeometry} />
+      {/* Filled translucent plane at the requested depth */}
+      <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[hw * 2, hz * 2, 1]}>
+        <primitive object={unitFill} attach="geometry" />
         <meshBasicMaterial
           color={SELECTED_SLICE_COLOR}
           transparent
-          opacity={0.24}
+          opacity={0.24 * safeOpacity}
           side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </mesh>
-      {/* Edge outline */}
-      <primitive object={edgeObj} />
+      {/* Edge outline follows the same taper */}
+      <lineSegments position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[hw * 2, hz * 2, 1]} geometry={unitOutline}>
+        <lineBasicMaterial color="#67e8f9" transparent opacity={0.9 * Math.max(0.15, safeOpacity)} />
+      </lineSegments>
       {/* Depth label at the slice */}
       <Html position={[0, y, 0]} center style={{ pointerEvents: 'none' }}>
         <div
@@ -617,6 +833,7 @@ function SelectedDepthSlice({ selectedDepth }: { selectedDepth: number }) {
             color: '#cffafe',
             fontFamily: 'monospace',
             whiteSpace: 'nowrap',
+            opacity: Math.max(0.2, safeOpacity),
           }}
         >
           {selectedDepth}m
@@ -627,20 +844,20 @@ function SelectedDepthSlice({ selectedDepth }: { selectedDepth: number }) {
 }
 
 /** Depth reference scale — vertical axis with labels at 0–500m. */
-function DepthScale({ selectedDepth }: { selectedDepth: number }) {
+function DepthScale({ selectedDepth, verticalExaggeration = 1 }: { selectedDepth: number; verticalExaggeration?: number }) {
   const depths = [0, 100, 200, 300, 400, 500];
   const x = -(PYRAMID_SURFACE_HALF_WIDTH + 0.48);
 
   const lineGeometry = useMemo(() => {
     const pts = [
       new THREE.Vector3(x, 0, 0),
-      new THREE.Vector3(x, -SCENE_DEPTH, 0),
+      new THREE.Vector3(x, -SCENE_DEPTH * verticalExaggeration, 0),
     ];
     return new THREE.BufferGeometry().setFromPoints(pts);
-  }, [x]);
+  }, [x, verticalExaggeration]);
 
   // Selected depth marker on the axis
-  const markerY = pressureToY(selectedDepth);
+  const markerY = pressureToY(selectedDepth, verticalExaggeration);
 
   return (
     <group>
@@ -649,7 +866,7 @@ function DepthScale({ selectedDepth }: { selectedDepth: number }) {
       </lineSegments>
 
       {depths.map((d) => {
-        const y = pressureToY(d);
+        const y = pressureToY(d, verticalExaggeration);
         return (
           <group key={d} position={[x, y, 0]}>
             <mesh>
@@ -676,15 +893,24 @@ function DepthScale({ selectedDepth }: { selectedDepth: number }) {
   );
 }
 
-/** Profile line rendered as a thick emissive tube for better visibility. */
+/**
+ * Profile line rendered as a thick tube. When `colorFromValues` is provided
+ * the tube uses per-vertex colors from the canonical color scale (the same
+ * value→color mapping as the colorbar); otherwise it uses the identity
+ * source color. `opacity` is the layer manager control (0–1).
+ */
 function ProfileLine({
   records,
   xPosition,
   color,
+  colorFromValues = null,
+  opacity = 1,
 }: {
   records: PositionedRecord[];
   xPosition: number;
-  color: string;
+  color?: string;
+  colorFromValues?: Array<[number, number, number]> | null;
+  opacity?: number;
 }) {
   const tubeGeometry = useMemo(() => {
     if (records.length < 2) return null;
@@ -693,18 +919,58 @@ function ProfileLine({
     return new THREE.TubeGeometry(curve, records.length * 4, 0.014, 6, false);
   }, [records, xPosition]);
 
+  const vertexColors = useMemo(() => {
+    if (!colorFromValues || records.length < 2) return null;
+    const geometry = tubeGeometry;
+    if (!geometry) return null;
+    // Interpolate per-measurement colors along the tube's tubular segments so
+    // the tube gradient matches the value→color mapping between measurements.
+    const tubularSegments = records.length * 4;
+    const colors: number[] = [];
+    for (let s = 0; s <= tubularSegments; s += 1) {
+      const pos = (s / tubularSegments) * (records.length - 1);
+      const i = Math.min(records.length - 2, Math.floor(pos));
+      const f = pos - i;
+      const a = colorFromValues[i];
+      const b = colorFromValues[i + 1] ?? a;
+      colors.push(
+        a[0] + (b[0] - a[0]) * f,
+        a[1] + (b[1] - a[1]) * f,
+        a[2] + (b[2] - a[2]) * f,
+      );
+    }
+    const attr = new THREE.Float32BufferAttribute(colors, 3);
+    geometry.setAttribute('color', attr);
+    return attr;
+  }, [colorFromValues, records, tubeGeometry]);
+
   if (!tubeGeometry) return null;
+
+  const safeOpacity = Math.max(0, Math.min(1, Number.isFinite(opacity) ? opacity : 1));
+
   return (
     <mesh geometry={tubeGeometry}>
-      <meshStandardMaterial
-        color={color}
-        emissive={color}
-        emissiveIntensity={0.4}
-        roughness={0.3}
-        metalness={0.1}
-        transparent
-        opacity={0.95}
-      />
+      {vertexColors ? (
+        <meshStandardMaterial
+          vertexColors
+          emissive={color ?? '#ffffff'}
+          emissiveIntensity={0.12}
+          roughness={0.3}
+          metalness={0.1}
+          transparent
+          opacity={0.95 * safeOpacity}
+        />
+      ) : (
+        <meshStandardMaterial
+          color={color ?? ARGO_COLOR}
+          emissive={color ?? ARGO_COLOR}
+          emissiveIntensity={0.4}
+          roughness={0.3}
+          metalness={0.1}
+          transparent
+          opacity={0.95 * safeOpacity}
+        />
+      )}
     </mesh>
   );
 }
@@ -721,6 +987,7 @@ function MeasurementPoint({
   variable,
   profileLabel,
   isHighlighted,
+  opacityOverride = 1,
 }: {
   record: PositionedRecord;
   xPosition: number;
@@ -729,27 +996,30 @@ function MeasurementPoint({
   variable: string;
   profileLabel: string;
   isHighlighted: boolean;
+  /** Layer manager opacity (0–1) multiplied into the point's material. */
+  opacityOverride?: number;
 }) {
   const [hovered, setHovered] = useState(false);
   const p = record.point;
 
+  const layerOpacity = Math.max(0, Math.min(1, Number.isFinite(opacityOverride) ? opacityOverride : 1));
   const sphereSize = isHighlighted ? 0.055 : hovered ? 0.045 : 0.028;
   const emissiveIntensity = isHighlighted ? 0.9 : hovered ? 0.6 : 0.15;
-  const opacity = isHighlighted ? 1 : hovered ? 1 : 0.92;
+  const opacity = (isHighlighted ? 1 : hovered ? 1 : 0.92) * layerOpacity;
 
   return (
     <group position={[xPosition, record.y, 0]}>
       <mesh
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-      >
-        <sphereGeometry args={[sphereSize, 12, 12]} />
+      >          <sphereGeometry args={[sphereSize, 12, 12]} />
         <meshStandardMaterial
           color={color}
           emissive={color}
           emissiveIntensity={emissiveIntensity}
           transparent
           opacity={opacity}
+          depthWrite={layerOpacity > 0.9}
         />
       </mesh>
 
@@ -804,9 +1074,15 @@ function MeasurementPoint({
 function DifferenceIndicator({
   record,
   isHighlighted,
+  opacity = 1,
+  colorOverride,
 }: {
   record: PositionedRecord;
   isHighlighted: boolean;
+  /** Discrepancies layer opacity (0–1) from the layer manager. */
+  opacity?: number;
+  /** Canonical color-scale color for this difference value (optional). */
+  colorOverride?: string;
 }) {
   const p = record.point;
   const diff = p.difference;
@@ -814,11 +1090,12 @@ function DifferenceIndicator({
 
   if (absDiff < 0.001) return null;
 
+  const layerOpacity = Math.max(0, Math.min(1, Number.isFinite(opacity) ? opacity : 1));
   const width = Math.min(absDiff * DIFF_SCALE, 0.5);
   const sign = diff > 0 ? 1 : -1;
   const midX = (record.argoX + record.glorysX) / 2;
   const startX = midX - (sign * width) / 2;
-  const diffColor = diff > 0 ? DIFF_POS_COLOR : DIFF_NEG_COLOR;
+  const diffColor = colorOverride ?? (diff > 0 ? DIFF_POS_COLOR : DIFF_NEG_COLOR);
 
   return (
     <group position={[startX, record.y, 0]}>
@@ -829,7 +1106,7 @@ function DifferenceIndicator({
           emissive={diffColor}
           emissiveIntensity={isHighlighted ? 0.6 : 0.2}
           transparent
-          opacity={isHighlighted ? 0.95 : 0.72}
+          opacity={(isHighlighted ? 0.95 : 0.72) * layerOpacity}
         />
       </mesh>
     </group>
@@ -883,31 +1160,128 @@ function ObservationAnchor({ firstRecord }: { firstRecord: PositionedRecord }) {
 
 // ── Main scene ───────────────────────────────────────────────────────────────
 
+/**
+ * Owns the camera exactly once per mounted inspector. It deliberately has no
+ * frame callback: after initialization, the camera changes only through
+ * OrbitControls or explicit view actions.
+ */
+function InspectorCameraController({
+  initialView,
+  viewControlsRef,
+}: {
+  initialView: InspectorInitialView;
+  viewControlsRef?: MutableRefObject<InspectorViewControls | null>;
+}) {
+  const { camera, invalidate } = useThree();
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return undefined;
+
+    const applyView = (position: THREE.Vector3, target: THREE.Vector3) => {
+      camera.position.copy(position);
+      controls.target.copy(target);
+      controls.update();
+      invalidate();
+    };
+
+    // One-time initialization; there is no render-driven lookAt or camera fit.
+    applyView(initialView.position, initialView.target);
+
+    if (viewControlsRef) {
+      const zoomBy = (factor: number) => {
+        const offset = camera.position.clone().sub(controls.target);
+        const distance = offset.length();
+        if (distance === 0) return;
+        const nextDistance = THREE.MathUtils.clamp(
+          distance * factor,
+          controls.minDistance,
+          controls.maxDistance,
+        );
+        camera.position.copy(controls.target).add(offset.multiplyScalar(nextDistance / distance));
+        controls.update();
+        invalidate();
+      };
+
+      viewControlsRef.current = {
+        zoomIn: () => zoomBy(0.8),
+        zoomOut: () => zoomBy(1.25),
+        resetView: () => applyView(initialView.position, initialView.target),
+      };
+    }
+
+    return () => {
+      if (viewControlsRef) viewControlsRef.current = null;
+    };
+  }, [camera, initialView, invalidate, viewControlsRef]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping={false}
+      enablePan
+      autoRotate={false}
+      minDistance={4.5}
+      maxDistance={13}
+      minPolarAngle={0.35}
+      maxPolarAngle={Math.PI - 0.2}
+    />
+  );
+}
+
 function InspectorScene({
   profilePoints,
   unit,
   variable,
   selectedDepth,
+  verticalExaggeration,
+  colorScale,
+  renderMode = 'variables',
+  layers = DEFAULT_SCENE_LAYERS,
 }: {
   profilePoints: Research3DPoint[];
   unit: string;
   variable: string;
   selectedDepth: number;
+  verticalExaggeration: number;
+  colorScale?: ColorScaleConfig;
+  renderMode?: FieldRenderMode;
+  layers?: SceneLayers;
 }) {
   const sorted = useMemo(
     () => [...profilePoints].sort((a, b) => a.pressure - b.pressure),
     [profilePoints],
   );
 
+  // Canonical color-scale resolution — the SAME config drives every 3D color
+  // and the synchronized colorbar rendered alongside the scene.
+  const scale = useMemo(
+    () => sceneScaleConfig(sorted, colorScale, renderMode),
+    [sorted, colorScale, renderMode],
+  );
+  const fieldConfig = scale?.config ?? null;
+
+  // Per-record colors from the real values. The underlying scientific values
+  // are never mutated — only their color encoding changes.
+  const recordColors = useMemo(() => {
+    if (!fieldConfig) return null;
+    return sorted.map((point) => ({
+      argo: valueToRgb(point.argoValue, fieldConfig),
+      glorys: valueToRgb(point.glorysValue, fieldConfig),
+      difference: valueToRgb(point.difference, fieldConfig),
+    }));
+  }, [sorted, fieldConfig]);
+
   const records: PositionedRecord[] = useMemo(
     () =>
       sorted.map((point) => ({
         point,
-        y: pressureToY(point.pressure),
+        y: pressureToY(point.pressure, verticalExaggeration),
         argoX: -ARGO_X_OFFSET,
         glorysX: GLORYS_X_OFFSET,
       })),
-    [sorted],
+    [sorted, verticalExaggeration],
   );
 
   // Shared selector guarantees this is the same real record used by Research charts/cards.
@@ -933,78 +1307,104 @@ function InspectorScene({
   const platformNumber = sorted[0]?.platformNumber ?? '';
   const cycleNumber = sorted[0]?.cycleNumber ?? '';
 
-  const cameraTargetY = useMemo(() => {
-    if (records.length === 0) return -SCENE_DEPTH / 2;
-    return (records[0].y + records[records.length - 1].y) / 2;
-  }, [records]);
-
   return (
     <>
       {/* Transparent 0-500 m cutaway water volume, following the same inverse taper. */}
-      <WaterVolume />
+      <WaterVolume verticalExaggeration={verticalExaggeration} />
 
       {/* Inverted pyramid frame */}
-      <InvertedPyramidFrame />
+      <InvertedPyramidFrame verticalExaggeration={verticalExaggeration} />
 
       {/* Wide 0 m surface plane establishes the top of the visual inspection volume. */}
       <SurfacePlane />
 
-      {/* Animated translucent surface sits on top of the static plane. */}
-      <WaveSurface />
-
       {/* Depth reference layers (translucent, following pyramid taper) */}
-      <DepthLayers />
+      <DepthLayers verticalExaggeration={verticalExaggeration} />
 
-      {/* Restrained light rays entering the water column from above. */}
-      <UnderwaterLightBeams />
-
-      {/* Sparse particles communicate suspended matter; they never obscure data. */}
-      <UnderwaterParticles />
-
-      {/* Selected depth slice (interactive, brighter) */}
-      <SelectedDepthSlice selectedDepth={selectedDepth} />
+      {/* Selected depth slice (interactive, brighter) — real layer control */}
+      <SelectedDepthSlice
+        selectedDepth={selectedDepth}
+        verticalExaggeration={verticalExaggeration}
+        visible={layers.depthSlice.visible}
+        opacity={layers.depthSlice.opacity}
+      />
 
       {/* Depth scale with selected-depth marker */}
-      <DepthScale selectedDepth={selectedDepth} />
+      <DepthScale selectedDepth={selectedDepth} verticalExaggeration={verticalExaggeration} />
 
-      {/* Argo profile */}
-      <ProfileLine records={records} xPosition={-ARGO_X_OFFSET} color={ARGO_COLOR} />
-      {records.map((r, i) => (
-        <MeasurementPoint
-          key={`argo-${i}`}
-          record={r}
-          xPosition={-ARGO_X_OFFSET}
-          color={ARGO_COLOR}
-          unit={unit}
-          variable={variable}
-          profileLabel="Argo"
-          isHighlighted={i === highlightedIndex}
-        />
-      ))}
+      {/* Argo profile — visibility + opacity from the canonical layer manager;
+          color from the canonical color scale (identity colors when unset). */}
+      {layers.argo.visible && (
+        <>
+          <ProfileLine
+            records={records}
+            xPosition={-ARGO_X_OFFSET}
+            color={fieldConfig ? undefined : ARGO_COLOR}
+            colorFromValues={recordColors?.map((c) => c.argo) ?? null}
+            opacity={layers.argo.opacity}
+          />
+          {records.map((r, i) => (
+            <MeasurementPoint
+              key={`argo-${i}`}
+              record={r}
+              xPosition={-ARGO_X_OFFSET}
+              color={fieldConfig ? valueToColor(r.point.argoValue, fieldConfig) : ARGO_COLOR}
+              unit={unit}
+              variable={variable}
+              profileLabel="Argo"
+              isHighlighted={i === highlightedIndex}
+              opacityOverride={layers.argo.opacity}
+            />
+          ))}
+        </>
+      )}
 
-      {/* GLORYS profile */}
-      <ProfileLine records={records} xPosition={GLORYS_X_OFFSET} color={GLORYS_COLOR} />
-      {records.map((r, i) => (
-        <MeasurementPoint
-          key={`glorys-${i}`}
-          record={r}
-          xPosition={GLORYS_X_OFFSET}
-          color={GLORYS_COLOR}
-          unit={unit}
-          variable={variable}
-          profileLabel="GLORYS"
-          isHighlighted={i === highlightedIndex}
-        />
-      ))}
+      {/* GLORYS profile — same canonical wiring as Argo */}
+      {layers.glorys.visible && (
+        <>
+          <ProfileLine
+            records={records}
+            xPosition={GLORYS_X_OFFSET}
+            color={fieldConfig ? undefined : GLORYS_COLOR}
+            colorFromValues={recordColors?.map((c) => c.glorys) ?? null}
+            opacity={layers.glorys.opacity}
+          />
+          {records.map((r, i) => (
+            <MeasurementPoint
+              key={`glorys-${i}`}
+              record={r}
+              xPosition={GLORYS_X_OFFSET}
+              color={fieldConfig ? valueToColor(r.point.glorysValue, fieldConfig) : GLORYS_COLOR}
+              unit={unit}
+              variable={variable}
+              profileLabel="GLORYS"
+              isHighlighted={i === highlightedIndex}
+              opacityOverride={layers.glorys.opacity}
+            />
+          ))}
+        </>
+      )}
 
-      {/* Difference indicators */}
-      {records.map((r, i) => (
-        <DifferenceIndicator
-          key={`diff-${i}`}
-          record={r}
-          isHighlighted={i === highlightedIndex}
-        />
-      ))}
+      {/* Difference indicators — the Discrepancies layer (GLORYS − Argo).
+          In difference mode the bars take palette colors; in variables mode
+          they keep the amber/blue identity semantics (model high / model low). */}
+      {layers.discrepancies.visible && (
+        <>
+          {records.map((r, i) => (
+            <DifferenceIndicator
+              key={`diff-${i}`}
+              record={r}
+              isHighlighted={i === highlightedIndex}
+              opacity={layers.discrepancies.opacity}
+              colorOverride={
+                renderMode === 'difference' && fieldConfig
+                  ? valueToColor(r.point.difference, fieldConfig)
+                  : undefined
+              }
+            />
+          ))}
+        </>
+      )}
 
       {/* Selected observation anchor at surface */}
       {records.length > 0 && (
@@ -1045,7 +1445,7 @@ function InspectorScene({
 
       {/* No nearby measurement message */}
       {!nearestRecord && records.length > 0 && (
-        <Html position={[0, pressureToY(selectedDepth), 0]} center style={{ pointerEvents: 'none' }}>
+        <Html position={[0, pressureToY(selectedDepth, verticalExaggeration), 0]} center style={{ pointerEvents: 'none' }}>
           <div
             style={{
               background: 'rgba(10, 14, 26, 0.85)',
@@ -1085,16 +1485,6 @@ function InspectorScene({
       </Html>
 
       {/* Orbit controls — user retains camera control */}
-      <OrbitControls
-        target={[0, cameraTargetY, 0]}
-        enableDamping
-        dampingFactor={0.08}
-        minDistance={4.5}
-        maxDistance={13}
-        minPolarAngle={0.35}
-        maxPolarAngle={Math.PI - 0.2}
-        makeDefault
-      />
     </>
   );
 }
@@ -1107,29 +1497,55 @@ export function DepthInspectorScene({
   unit,
   variable,
   selectedDepth,
+  verticalExaggeration = 1,
+  colorScale,
+  renderMode = 'variables',
+  layers,
+  showColorbar = true,
+  viewControlsRef,
 }: DepthInspectorSceneProps) {
   const hasData = profilePoints.length > 0;
+  const [initialView] = useState<InspectorInitialView>(() => {
+    const targetY = -(SCENE_DEPTH * verticalExaggeration) / 2;
+    return {
+      position: new THREE.Vector3(6.2, targetY + 1.2, 7.2),
+      target: new THREE.Vector3(0, targetY, 0),
+    };
+  });
+  const cameraConfig = useMemo(
+    () => ({
+      position: [initialView.position.x, initialView.position.y, initialView.position.z] as [number, number, number],
+      fov: 38,
+      near: 0.1,
+      far: 100,
+    }),
+    [initialView],
+  );
+  const glConfig = useMemo(() => ({ antialias: true }), []);
 
-  const initialCameraY = useMemo(() => {
-    if (!hasData) return -1;
-    const pressures = profilePoints.map((p) => p.pressure);
-    const maxP = Math.max(...pressures);
-    const midDepth = maxP / 2;
-    return pressureToY(midDepth) + 0.8;
-  }, [profilePoints, hasData]);
+  // Resolve the SAME scale config as the 3D renderer so the colorbar always
+  // matches what the scene actually displays (Task 1 requirement 12/13).
+  const scale = useMemo(
+    () => sceneScaleConfig(profilePoints, colorScale, renderMode),
+    [profilePoints, colorScale, renderMode],
+  );
 
   return (
-    <div className={className ?? 'h-full w-full'}>
-      <Canvas
-        camera={{
-          position: [6.2, initialCameraY + 0.4, 7.2],
-          fov: 38,
-          near: 0.1,
-          far: 100,
-        }}
-        gl={{ antialias: true }}
-        style={{ background: '#0a0e1a' }}
-      >
+    <div className={`${className ?? 'h-full w-full'} flex min-h-0 flex-col overflow-hidden`}>
+      {/*
+       * Canvas and colorbar must share a bounded flex column. A 100%-height
+       * Canvas followed by a normal-flow colorbar creates a ResizeObserver
+       * feedback loop: the colorbar increases content height, the Canvas
+       * resizes to that new height, then increases it again.
+       */}
+      <div className="min-h-0 flex-1">
+        <Canvas
+          className="h-full w-full"
+          camera={cameraConfig}
+          frameloop="demand"
+          gl={glConfig}
+          style={{ background: '#0a0e1a' }}
+        >
         <fog attach="fog" args={['#061526', 8, 19]} />
         <ambientLight intensity={0.45} />
         <directionalLight position={[2, 5, 3]} intensity={0.55} />
@@ -1146,12 +1562,18 @@ export function DepthInspectorScene({
         <hemisphereLight args={['#67e8f9', '#0c4a6e', 0.2]} />
 
         {hasData ? (
-          <InspectorScene
-            profilePoints={profilePoints}
-            unit={unit}
-            variable={variable}
-            selectedDepth={selectedDepth}
-          />
+          <SceneErrorBoundary>
+            <InspectorScene
+              profilePoints={profilePoints}
+              unit={unit}
+              variable={variable}
+              selectedDepth={selectedDepth}
+              verticalExaggeration={verticalExaggeration}
+              colorScale={colorScale}
+              renderMode={renderMode}
+              layers={layers}
+            />
+          </SceneErrorBoundary>
         ) : (
           <Html center style={{ pointerEvents: 'none' }}>
             <div
@@ -1174,13 +1596,79 @@ export function DepthInspectorScene({
           </Html>
         )}
 
-        <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-          <GizmoViewport
-            axisColors={['#ef4444', '#22c55e', '#3b82f6']}
-            labelColor="white"
+        <InspectorCameraController
+          initialView={initialView}
+          viewControlsRef={viewControlsRef}
+        />
+
+        </Canvas>
+      </div>
+
+      {showColorbar && hasData && scale && (
+        <SceneColorbar
+          scale={scale}
+          unit={unit}
+          variable={variable}
+          renderMode={renderMode}
+          logRequested={colorScale?.logarithmic ?? false}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * SceneColorbar — legend synchronized with the actual renderer.
+ *
+ * It uses the exact ScaleTransformConfig the 3D scene resolved (same palette,
+ * same sanitized range, same log transform), so it can never disagree with
+ * the displayed colors.
+ */
+function SceneColorbar({
+  scale,
+  unit,
+  variable,
+  renderMode,
+  logRequested,
+}: {
+  scale: { config: ScaleTransformConfig; range: { min: number; max: number }; logApplied: boolean };
+  unit: string;
+  variable: string;
+  renderMode: FieldRenderMode;
+  /** True when the user asked for log mode (may be unapplied for signed fields). */
+  logRequested: boolean;
+}) {
+  const { config, range, logApplied } = scale;
+  const ticks = useMemo(
+    () => legendTicks(range.min, range.max, config.logarithmic, 5),
+    [range.min, range.max, config.logarithmic],
+  );
+  const gradient = useMemo(
+    () => paletteGradient(config.paletteId, config.logarithmic, range.min, range.max),
+    [config.paletteId, config.logarithmic, range.min, range.max],
+  );
+
+  return (
+    <div
+      className="mt-1.5 flex items-center gap-2 px-1"
+      style={{ pointerEvents: 'none' }}
+      aria-label={`${renderMode === 'difference' ? 'Difference' : variable} color scale`}
+    >
+      <div className="relative h-2 flex-1 border" style={{ borderColor: 'var(--os-border)' }}>
+        <div className="absolute inset-0" style={{ background: gradient, opacity: 0.92 }} />
+        {ticks.map((tick, i) => (
+          <div
+            key={i}
+            className="absolute top-[-3px] bottom-[-3px] w-px"
+            style={{ left: `${(tick.t * 100).toFixed(1)}%`, background: 'var(--os-text-muted)', opacity: 0.5 }}
           />
-        </GizmoHelper>
-      </Canvas>
+        ))}
+      </div>
+      <div className="mono text-[9px] whitespace-nowrap" style={{ color: 'var(--os-text-3)' }}>
+        {range.min.toFixed(2)} … {range.max.toFixed(2)} {unit}
+        {config.logarithmic ? ' · log10' : ''}
+        {logRequested && !logApplied ? ' · log unavailable for this field' : ''}
+      </div>
     </div>
   );
 }

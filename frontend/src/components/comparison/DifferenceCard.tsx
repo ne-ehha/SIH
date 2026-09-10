@@ -19,7 +19,7 @@ export function DifferenceCard({ label, value, unit, color, showSign }: Differen
 
   return (
     <div
-      className="rounded-lg p-3"
+      className="p-3"
       style={{ border: `1px solid ${s.border}33`, background: s.bg }}
     >
       <p className="text-[10px] uppercase tracking-wider" style={{ color: s.text, opacity: 0.6 }}>{label}</p>

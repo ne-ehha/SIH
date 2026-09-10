@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D, type Research3DPoint } from '@/integration';
+import { valueToColor, paletteGradient, logScaleAvailable } from '@/config/colorScales';
+import { OBSERVATION_DATES } from '@/config/observationDates';
 import {
   findNearestResearchMeasurement,
   RESEARCH_NEAREST_MATCH_TOLERANCE,
@@ -82,7 +84,10 @@ function buildDepthCoverage(points: Research3DPoint[]) {
   });
 }
 
-function differenceFill(difference: number, scale: number): string {
+function differenceFill(
+  difference: number,
+  scale: number,
+): string {
   if (scale <= 0 || !Number.isFinite(scale)) return 'var(--os-text-3)';
   const t = Math.max(-1, Math.min(1, difference / scale));
   if (Math.abs(t) < 0.02) return 'var(--os-text-3)';
@@ -92,6 +97,36 @@ function differenceFill(difference: number, scale: number): string {
   }
   const a = 0.45 + t * 0.5;
   return `color-mix(in srgb, var(--os-diff-pos) ${Math.round(a * 100)}%, var(--os-surface))`;
+}
+
+/**
+ * Value→color mapping honouring the scientific color-scale controls
+ * (palette / min / max / log). Diverging palettes center on zero;
+ * the manual min/max widen or narrow the effective range.
+ */
+function controlledFill(
+  difference: number,
+  scale: number,
+  config: { paletteId: string; auto: boolean; min: number; max: number; logarithmic: boolean },
+): string {
+  const magnitude = Math.abs(difference);
+  const sign = difference >= 0 ? 1 : -1;
+  // Effective half-range: manual values widen the scale beyond the data max;
+  // non-finite or inverted manual ranges are ignored (renderer-side guard).
+  const manualUsable =
+    Number.isFinite(config.min) && Number.isFinite(config.max) && config.min < config.max;
+  const halfRange = config.auto || !manualUsable
+    ? scale
+    : Math.max(Math.abs(config.min), Math.abs(config.max), scale);
+  if (halfRange <= 0 || !Number.isFinite(halfRange)) return 'var(--os-text-3)';
+  // A signed field is never log-mapped here: log requires a positive domain
+  // and shifting data to force log is forbidden.
+  return valueToColor(magnitude * sign, {
+    paletteId: config.paletteId,
+    min: -halfRange,
+    max: halfRange,
+    logarithmic: false,
+  });
 }
 
 function projectPoint(latitude: number, longitude: number, bounds: Bounds) {
@@ -202,6 +237,10 @@ export function DiscrepancyMap() {
     selectedDepth,
     selectedRegion,
     selectResearchObservation,
+    colorScale,
+    activeLayers,
+    stepTime,
+    timeIndex,
   } = useOceanStore();
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -246,9 +285,24 @@ export function DiscrepancyMap() {
     );
   }, [mapPoints]);
 
-  const colorScale = stats.maxAbsDifference > 0 ? stats.maxAbsDifference : 1;
+  const colorScaleValue = stats.maxAbsDifference > 0 ? stats.maxAbsDifference : 1;
   const displayUnit = unit || (selectedVariable === 'salinity' ? 'PSU' : '°C');
   const grid = graticuleLines(mapBounds);
+
+  // Log-scale semantics for the SIGNED difference field: GLORYS − Argo spans
+  // negative and positive values, so a strict log map is undefined. We never
+  // shift data by an arbitrary constant — the renderer keeps linear mapping
+  // and says so. (Manual min/max still widen the linear half-range below.)
+  const logAvailable = logScaleAvailable(mapPoints.map((p) => p.difference));
+  const logEffective = colorScale.logarithmic && logAvailable;
+  const manualRangeInvalid =
+    !colorScale.auto &&
+    (colorScale.min >= colorScale.max || !Number.isFinite(colorScale.min) || !Number.isFinite(colorScale.max));
+
+  // Layer manager: the discrepancy layer's visibility + opacity are real controls.
+  const discrepancyLayer = activeLayers.find((l) => l.id === 'discrepancies');
+  const discrepancyVisible = discrepancyLayer?.enabled ?? true;
+  const discrepancyOpacity = discrepancyLayer?.opacity ?? 0.85;
 
   const currentCoverage = (() => {
     const exact = depthCoverage.find((d) => Math.abs(d.depth - selectedDepth) < 1e-6);
@@ -290,6 +344,31 @@ export function DiscrepancyMap() {
           <div className="text-[11px] text-[var(--os-text-2)] mt-0.5">
             GLORYS12V1 − Argo · collocated observations near {selectedDepth} m
           </div>
+        </div>
+
+        {/* Time navigation — real observation dates only (SIH26067) */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => stepTime(-1)}
+            disabled={timeIndex <= 0}
+            className="border border-[var(--os-border)] bg-[var(--os-bg)] px-2 py-1 text-[11px] transition hover:border-[var(--os-border-light)] disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Previous observation date"
+          >
+            ◀
+          </button>
+          <span className="mono text-[11px] px-1" style={{ color: 'var(--os-text-2)' }}>
+            {selectedDate}
+          </span>
+          <button
+            type="button"
+            onClick={() => stepTime(1)}
+            disabled={timeIndex >= OBSERVATION_DATES.length - 1}
+            className="border border-[var(--os-border)] bg-[var(--os-bg)] px-2 py-1 text-[11px] transition hover:border-[var(--os-border-light)] disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Next observation date"
+          >
+            ▶
+          </button>
         </div>
         <button
           type="button"
@@ -380,7 +459,7 @@ export function DiscrepancyMap() {
                   <text x={MAP_WIDTH - MAP_PAD_R} y={MAP_PAD_T - 10} fill="var(--os-text-3)" fontSize={11} fontFamily="ui-monospace, monospace" textAnchor="end">
                     {mapPoints.length} real profiles · GLORYS − Argo
                   </text>
-                  {mapPoints.map((point) => {
+                  {discrepancyVisible && mapPoints.map((point) => {
                     const { x, y } = projectPoint(point.latitude, point.longitude, mapBounds);
                     const id = observationIdFromPoint(point);
                     const selected = id === selectedObservationId;
@@ -394,7 +473,8 @@ export function DiscrepancyMap() {
                         cx={x}
                         cy={y}
                         r={radius}
-                        fill={differenceFill(point.difference, colorScale)}
+                        fillOpacity={discrepancyOpacity}
+                        fill={controlledFill(point.difference, colorScaleValue, colorScale)}
                         stroke={
                           selected
                             ? 'var(--os-selected)'
@@ -415,14 +495,17 @@ export function DiscrepancyMap() {
                       </circle>
                     );
                   })}
-                </svg>
-                <div className="border-t border-[var(--os-border)] px-3 py-2">
+                </svg>                  <div className="border-t border-[var(--os-border)] px-3 py-2">
                   <div className="relative h-2.5 border border-[var(--os-border)] bg-[var(--os-surface-2)]">
                     <div
                       className="absolute inset-0"
                       style={{
-                        background:
-                          'linear-gradient(to right, var(--os-diff-neg), var(--os-text-3) 50%, var(--os-diff-pos))',
+                        background: paletteGradient(
+                          colorScale.paletteId,
+                          logEffective,
+                          -colorScaleValue,
+                          colorScaleValue,
+                        ),
                         opacity: 0.92,
                       }}
                     />
@@ -431,7 +514,12 @@ export function DiscrepancyMap() {
                   <div className="mt-1.5 flex justify-between text-[11px]">
                     <span className="text-[var(--os-diff-neg)] font-medium">MODEL LOW</span>
                     <span className="text-[var(--os-text-2)] mono">
-                      ZERO · ±{colorScale.toFixed(2)} {displayUnit}
+                      ZERO · ±{colorScaleValue.toFixed(2)} {displayUnit}
+                      {logEffective ? ' · log' : ''}
+                      {colorScale.logarithmic && !logAvailable ? ' · log unavailable (signed values)' : ''}
+                      {!colorScale.auto
+                        ? ` · manual [${colorScale.min}, ${colorScale.max}]${manualRangeInvalid ? ' (invalid — ignored)' : ''}`
+                        : ''}
                     </span>
                     <span className="text-[var(--os-diff-pos)] font-medium">MODEL HIGH</span>
                   </div>
