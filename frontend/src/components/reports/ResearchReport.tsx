@@ -1,205 +1,52 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useOceanStore } from '@/state/oceanStore';
-import { getProvider, useResearchVisualization3D } from '@/integration';
-
-interface ReportData {
-  comparison: {
-    modelValue: number;
-    observationValue: number;
-    difference: number;
-    unit: string;
-    sourceModel: string;
-    sourceObservation: string;
-    nearestDistance?: number;
-  } | null;
-  profilePointCount: number;
-  maxDepth: number;
-}
+import { useResearchVisualization3D } from '@/integration';
+import type { OceanVariable, Research3DPoint } from '@/integration/types';
 
 export function ResearchReport() {
-  const {
-    selectedLocation,
-    selectedVariable,
-    selectedDate,
-    selectedTime,
-    selectedDepth,
-    selectedObservationId,
-  } = useOceanStore();
-  const [report, setReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { selectedLocation, selectedVariable, selectedDate, selectedTime, selectedDepth, selectedObservationId, researchDataMode } = useOceanStore();
+  const enabled = researchDataMode === 'benchmark' && Boolean(selectedLocation && selectedObservationId);
+  const temperature = useResearchVisualization3D({ latitude: selectedLocation?.latitude ?? null, longitude: selectedLocation?.longitude ?? null, variable: 'temperature' as OceanVariable, date: selectedDate, time: selectedTime, selectedObservationId, selectedDepth, enabled });
+  const salinity = useResearchVisualization3D({ latitude: selectedLocation?.latitude ?? null, longitude: selectedLocation?.longitude ?? null, variable: 'salinity' as OceanVariable, date: selectedDate, time: selectedTime, selectedObservationId, selectedDepth, enabled });
 
-  const { stats: validationStats, selectedMeasurement, unit } = useResearchVisualization3D({
-    latitude: selectedLocation?.latitude ?? null,
-    longitude: selectedLocation?.longitude ?? null,
-    variable: selectedVariable,
-    date: selectedDate,
-    time: selectedTime,
-    selectedObservationId,
-    selectedDepth,
-  });
-
-  useEffect(() => {
-    if (!selectedLocation) return;
-
-    const fetchReport = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const provider = getProvider();
-        const [comparisonResponse, profileResponse] = await Promise.all([
-          provider.fetchComparison({
-            location: { ...selectedLocation, depth: selectedDepth },
-            variable: selectedVariable,
-            depth: selectedDepth,
-            date: selectedDate,
-            time: selectedTime,
-          }),
-          provider.fetchVerticalProfile({
-            location: selectedLocation,
-            variable: selectedVariable,
-            date: selectedDate,
-            time: selectedTime,
-          }),
-        ]);
-
-        const comparison = comparisonResponse.status === 'success' && comparisonResponse.data
-          ? {
-              modelValue: comparisonResponse.data.point.modelValue,
-              observationValue: comparisonResponse.data.point.observationValue,
-              difference: comparisonResponse.data.point.difference,
-              unit: comparisonResponse.data.point.unit,
-              sourceModel: comparisonResponse.data.sourceModel,
-              sourceObservation: comparisonResponse.data.sourceObservation,
-              nearestDistance: comparisonResponse.data.nearestDistance,
-            }
-          : null;
-        const profilePointCount = profileResponse.status === 'success' && profileResponse.data
-          ? profileResponse.data.points.length
-          : 0;
-        const maxDepth = profileResponse.status === 'success' && profileResponse.data
-          ? profileResponse.data.maxDepth
-          : 0;
-
-        setReport({ comparison, profilePointCount, maxDepth });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Failed to load report data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchReport();
-  }, [selectedLocation, selectedVariable, selectedDate, selectedTime, selectedDepth]);
-
+  if (researchDataMode === 'latest') return <ReportMessage title="Latest Available Argo data" detail="Latest Available mode is Argo-only. GLORYS12V1 comparison graphs and validation statistics are intentionally unavailable until operational model collocations exist." />;
   if (!selectedLocation) return <ReportMessage title="No observation selected" detail="Select a real Argo profile from Explore to generate a research report." />;
-  if (loading) return <ReportMessage title="Generating report" detail="Retrieving current comparison and profile evidence." />;
-  if (error) return <ReportMessage title="Report data unavailable" detail={error} />;
-  if (!report) return <ReportMessage title="No report data available" detail="No report data are available for this selection." />;
+  if (!selectedObservationId) return <ReportMessage title="No profile selected" detail="Select a real collocated Argo observation marker to generate profile-based report graphs." />;
+  if (temperature.loading || salinity.loading) return <ReportMessage title="Generating report" detail="Retrieving selected-profile comparison evidence." />;
+  if (temperature.error || salinity.error) return <ReportMessage title="Report data unavailable" detail={temperature.error || salinity.error || 'Profile evidence is unavailable.'} />;
 
-  const evidence = selectedMeasurement || (report.comparison ? {
-    argoValue: report.comparison.observationValue,
-    glorysValue: report.comparison.modelValue,
-    difference: report.comparison.difference,
-    pressure: selectedDepth,
-  } : null);
-  const evidenceUnit = unit || report.comparison?.unit || '';
-  const formatDifference = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}`;
+  const activeProfile = selectedVariable === 'salinity' ? salinity : temperature;
+  const selectedEvidence = activeProfile.selectedMeasurement;
 
-  return (
-    <article className="mx-auto max-w-4xl space-y-4">
-      <header className="border-b pb-4" style={{ borderColor: 'var(--os-border)' }}>
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--os-text)' }}>Research report</h2>
-        <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'var(--os-text-2)' }}>
-          Current GLORYS12V1 and Argo Delayed Mode comparison for the active research selection.
-        </p>
-      </header>
-
-      <Section title="Study scope">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
-          <Row label="Region" value="Bay of Bengal" />
-          <Row label="Analysis period" value="2024-01-01 to 2024-01-15" />
-          <Row label="Model" value="GLORYS12V1" />
-          <Row label="Observations" value="Argo Delayed Mode" />
-          <Row label="Validated depth range" value="0–500 m" />
-          <Row label="Difference definition" value="GLORYS12V1 − Argo" />
-        </div>
-      </Section>
-
-      <Section title="Selected comparison">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
-          <Row label="Variable" value={selectedVariable} />
-          <Row label="Requested depth" value={`${selectedDepth} m`} />
-          <Row label="Selected date" value={selectedDate} />
-          <Row label="Selected observation" value={selectedObservationId ?? 'No profile identity selected'} />
-          {selectedLocation && <Row label="Location" value={`${selectedLocation.latitude.toFixed(2)}°, ${selectedLocation.longitude.toFixed(2)}°`} />}
-        </div>
-      </Section>
-
-      <Section title="Observed comparison">
-        {evidence ? (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Value label="Observation value" value={evidence.argoValue.toFixed(2)} unit={evidenceUnit} color="var(--os-argo)" />
-              <Value label="Model value" value={evidence.glorysValue.toFixed(2)} unit={evidenceUnit} color="var(--os-glorys)" />
-              <Value label="Observed difference" value={formatDifference(evidence.difference)} unit={evidenceUnit} color={evidence.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'} />
-            </div>
-            <p className="mt-3 border-t pt-3 text-[11px]" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-3)' }}>
-              Nearest real profile measurement: <span className="mono" style={{ color: 'var(--os-text-2)' }}>{evidence.pressure.toFixed(1)} dbar</span>
-              {report.comparison?.nearestDistance !== undefined && report.comparison.nearestDistance > 0.01 && ` · ${report.comparison.nearestDistance.toFixed(1)} km from the requested location`}
-            </p>
-          </>
-        ) : <p className="text-[12px]" style={{ color: 'var(--os-text-3)' }}>No model–observation evidence is available for this selection.</p>}
-      </Section>
-
-      <Section title="Validation results">
-        {validationStats ? (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <Value label="Collocated records" value={String(validationStats.totalPoints)} />
-              <Value label="Mean difference" value={formatDifference(validationStats.meanDifference)} unit={unit} color={validationStats.meanDifference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'} />
-              <Value label="RMS difference" value={validationStats.rmsDifference.toFixed(2)} unit={unit} />
-              <Value label="Argo mean" value={validationStats.argoMean.toFixed(2)} unit={unit} color="var(--os-argo)" />
-              <Value label="GLORYS mean" value={validationStats.glorysMean.toFixed(2)} unit={unit} color="var(--os-glorys)" />
-              <Value label="Maximum |difference|" value={validationStats.maxDifference.toFixed(2)} unit={unit} />
-            </div>
-            <p className="mt-3 text-[11px]" style={{ color: 'var(--os-text-3)' }}>
-              Returned depth range: {validationStats.depthRange[0]}–{validationStats.depthRange[1]} dbar.
-            </p>
-          </>
-        ) : <p className="text-[12px]" style={{ color: 'var(--os-text-3)' }}>Validation statistics are unavailable for this selection.</p>}
-      </Section>
-
-      <Section title="Evidence context">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
-          <Row label="Comparison model source" value={report.comparison?.sourceModel ?? 'Unavailable'} />
-          <Row label="Observation source" value={report.comparison?.sourceObservation ?? 'Unavailable'} />
-          <Row label="Returned profile levels" value={String(report.profilePointCount)} />
-          <Row label="Returned profile maximum depth" value={report.maxDepth > 0 ? `${report.maxDepth.toFixed(1)} dbar` : 'Unavailable'} />
-        </div>
-      </Section>
-
-      <Section title="Dataset scope">
-        <p className="text-[12px] leading-relaxed" style={{ color: 'var(--os-text-2)' }}>
-          This report presents the Bay of Bengal GLORYS12V1 × Argo Delayed Mode research comparison for 1–15 January 2024, within the validated 0–500 m water-column window. Differences are calculated as GLORYS12V1 minus Argo.
-        </p>
-      </Section>
-    </article>
-  );
+  return <article className="mx-auto max-w-4xl space-y-4">
+    <header className="border-b pb-4" style={{ borderColor: 'var(--os-border)' }}>
+      <h2 className="text-lg font-semibold" style={{ color: 'var(--os-text)' }}>Scientific validation report</h2>
+      <p className="mt-1 text-[12px]" style={{ color: 'var(--os-text-2)' }}>GLORYS12V1 × Argo Delayed Mode benchmark evidence for the active collocated profile.</p>
+    </header>
+    <Section title="Study scope"><div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2"><Row label="Region" value="Bay of Bengal" /><Row label="Analysis period" value="2024-01-01 to 2024-01-15" /><Row label="Data sources" value="GLORYS12V1 × Argo Delayed Mode" /><Row label="Validated depth range" value="0–500 dbar" /><Row label="Difference definition" value="GLORYS − Argo" /><Row label="Active profile" value={selectedObservationId} /></div></Section>
+    <Section title="Validation summary"><ValidationSummary stats={temperature.stats} unit={temperature.unit} variable="temperature" /><ValidationSummary stats={salinity.stats} unit={salinity.unit} variable="salinity" /></Section>
+    <Section title="Vertical profile analysis"><div className="space-y-7"><ProfileFigure title="Temperature profile — Argo vs GLORYS" description="Observed and model temperature structure across the validated 0–500 dbar water column." points={temperature.selectedProfilePoints} unit="°C" variable="Temperature" /><ProfileFigure title="Salinity profile — Argo vs GLORYS" description="Observed and model salinity structure across the validated 0–500 dbar water column." points={salinity.selectedProfilePoints} unit="PSU" variable="Salinity" /></div></Section>
+    <Section title="Model–observation difference"><div className="space-y-7"><DifferenceFigure title="Temperature difference — GLORYS − Argo" description="Model-minus-observation temperature difference across the validated water column." points={temperature.selectedProfilePoints} unit="°C" variable="Temperature" /><DifferenceFigure title="Salinity difference — GLORYS − Argo" description="Model-minus-observation salinity difference across the validated water column." points={salinity.selectedProfilePoints} unit="PSU" variable="Salinity" /></div></Section>
+    <Section title="Selected comparison">{selectedEvidence ? <><div className="grid grid-cols-1 gap-4 sm:grid-cols-3"><Value label="Argo observation" value={selectedEvidence.argoValue.toFixed(3)} unit={activeProfile.unit} color="var(--os-argo)" /><Value label="GLORYS model" value={selectedEvidence.glorysValue.toFixed(3)} unit={activeProfile.unit} color="var(--os-glorys)" /><Value label="GLORYS − Argo" value={`${selectedEvidence.difference > 0 ? '+' : ''}${selectedEvidence.difference.toFixed(3)}`} unit={activeProfile.unit} color={selectedEvidence.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'} /></div><p className="mt-3 text-[11px]" style={{ color: 'var(--os-text-3)' }}>Nearest returned measurement: {selectedEvidence.pressure.toFixed(1)} dbar for active {selectedVariable} selection.</p></> : <p className="text-[12px]" style={{ color: 'var(--os-text-3)' }}>No selected model–observation evidence is available.</p>}</Section>
+    <Section title="Interpretation"><p className="text-[12px] leading-relaxed" style={{ color: 'var(--os-text-2)' }}>This report presents only the January 2024 historical benchmark. Differences use GLORYS − Argo, so positive values mean the model is higher than the observation. The profile curves and differences above are returned selected-profile collocation records; no values are interpolated or fabricated.</p></Section>
+  </article>;
 }
 
-function ReportMessage({ title, detail }: { title: string; detail: string }) {
-  return <div className="flex min-h-48 items-center justify-center text-center"><div><p className="text-[13px] font-medium" style={{ color: 'var(--os-text-2)' }}>{title}</p><p className="mt-1 text-[11px]" style={{ color: 'var(--os-text-3)' }}>{detail}</p></div></div>;
+function ValidationSummary({ stats, unit, variable }: { stats: { totalPoints: number; meanDifference: number; rmsDifference: number; depthRange: [number, number] } | null; unit: string; variable: string }) {
+  if (!stats) return <p className="text-[12px]" style={{ color: 'var(--os-text-3)' }}>No aggregate {variable} validation statistics are available.</p>;
+  return <div className="mb-4 last:mb-0"><div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--os-text-3)' }}>{variable}</div><div className="grid grid-cols-2 gap-4 sm:grid-cols-4"><Value label="Collocated records" value={String(stats.totalPoints)} /><Value label="Mean GLORYS − Argo" value={`${stats.meanDifference > 0 ? '+' : ''}${stats.meanDifference.toFixed(3)}`} unit={unit} color={stats.meanDifference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'} /><Value label="RMS difference" value={stats.rmsDifference.toFixed(3)} unit={unit} /><Value label="Depth range" value={`${stats.depthRange[0]}–${stats.depthRange[1]}`} unit="dbar" /></div></div>;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="border" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}><h3 className="border-b px-4 py-2.5 text-[13px] font-semibold" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text)' }}>{title}</h3><div className="p-4">{children}</div></section>;
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return <div className="flex min-w-0 items-baseline justify-between gap-4 py-0.5 text-[12px]"><span style={{ color: 'var(--os-text-muted)' }}>{label}</span><span className="mono min-w-0 break-words text-right" style={{ color: 'var(--os-text-2)' }}>{value}</span></div>;
-}
-
-function Value({ label, value, unit, color }: { label: string; value: string; unit?: string; color?: string }) {
-  return <div><div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: 'var(--os-text-muted)' }}>{label}</div><div className="mono mt-1 text-[16px] font-semibold" style={{ color: color ?? 'var(--os-text)' }}>{value}{unit && <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--os-text-3)' }}>{unit}</span>}</div></div>;
-}
+function pointsForChart(points: Research3DPoint[]) { return [...points].filter((p) => Number.isFinite(p.pressure) && Number.isFinite(p.argoValue) && Number.isFinite(p.glorysValue) && Number.isFinite(p.difference)).sort((a, b) => a.pressure - b.pressure); }
+function Figure({ title, description, children }: { title: string; description: string; children: ReactNode }) { return <figure><figcaption className="mb-3"><h4 className="text-[13px] font-semibold" style={{ color: 'var(--os-text)' }}>{title}</h4><p className="mt-0.5 text-[11px]" style={{ color: 'var(--os-text-3)' }}>{description}</p></figcaption>{children}</figure>; }
+function ProfileFigure({ title, description, points, unit, variable }: { title: string; description: string; points: Research3DPoint[]; unit: string; variable: string }) { const data = useMemo(() => pointsForChart(points), [points]); if (!data.length) return <Unavailable title={title} description={description} />; return <Figure title={title} description={description}><ChartShell><LineChart data={data} layout="vertical" margin={{ top: 10, right: 24, bottom: 18, left: 16 }}><CartesianGrid stroke="#1e293b" strokeDasharray="3 3" /><XAxis type="number" tick={tick} label={axisLabel(`${variable} (${unit})`)} /><DepthAxis /><Tooltip {...tooltip} labelFormatter={(depth) => `Depth: ${Number(depth).toFixed(1)} dbar`} /><Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /><Line type="linear" dataKey="argoValue" name={`Argo (${unit})`} stroke="#22d3ee" strokeWidth={2} dot={false} /><Line type="linear" dataKey="glorysValue" name={`GLORYS (${unit})`} stroke="#a855f7" strokeWidth={2} dot={false} /></LineChart></ChartShell></Figure>; }
+function DifferenceFigure({ title, description, points, unit, variable }: { title: string; description: string; points: Research3DPoint[]; unit: string; variable: string }) { const data = useMemo(() => pointsForChart(points), [points]); if (!data.length) return <Unavailable title={title} description={description} />; return <Figure title={title} description={description}><ChartShell><LineChart data={data} layout="vertical" margin={{ top: 10, right: 24, bottom: 18, left: 16 }}><CartesianGrid stroke="#1e293b" strokeDasharray="3 3" /><XAxis type="number" dataKey="difference" tick={tick} label={axisLabel(`${variable} difference (${unit})`)} /><DepthAxis /><ReferenceLine x={0} stroke="#cbd5e1" strokeWidth={1} /><Tooltip {...tooltip} labelFormatter={(depth) => `Depth: ${Number(depth).toFixed(1)} dbar`} /><Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} /><Line type="linear" dataKey="difference" name={`GLORYS − Argo (${unit})`} stroke="#f59e0b" strokeWidth={2} dot={false} /></LineChart></ChartShell></Figure>; }
+const tick = { fill: '#94a3b8', fontSize: 10 }; const tooltip = { contentStyle: { backgroundColor: '#09101d', border: '1px solid #334155', fontSize: 11 } }; const axisLabel = (value: string) => ({ value, position: 'insideBottom' as const, offset: -8, fill: '#94a3b8', fontSize: 11 });
+function DepthAxis() { return <YAxis type="number" dataKey="pressure" domain={[0, 'dataMax']} reversed tick={tick} width={42} label={{ value: 'Depth (dbar)', angle: -90, position: 'insideLeft', offset: 4, fill: '#94a3b8', fontSize: 11 }} />; }
+function ChartShell({ children }: { children: ReactNode }) { return <div className="h-[20rem] border p-3 sm:h-[22rem]" style={{ borderColor: 'var(--os-border)', background: 'var(--os-bg)' }}><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div>; }
+function Unavailable({ title, description }: { title: string; description: string }) { return <Figure title={title} description={description}><div className="border p-4 text-[12px]" style={{ borderColor: 'var(--os-border)', background: 'var(--os-bg)', color: 'var(--os-text-muted)' }}>No returned paired collocation records are available for this profile and variable.</div></Figure>; }
+function ReportMessage({ title, detail }: { title: string; detail: string }) { return <div className="flex min-h-48 items-center justify-center text-center"><div><p className="text-[13px] font-medium" style={{ color: 'var(--os-text-2)' }}>{title}</p><p className="mt-1 text-[11px]" style={{ color: 'var(--os-text-3)' }}>{detail}</p></div></div>; }
+function Section({ title, children }: { title: string; children: ReactNode }) { return <section className="border" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}><h3 className="border-b px-4 py-2.5 text-[13px] font-semibold" style={{ borderColor: 'var(--os-border)', color: 'var(--os-text)' }}>{title}</h3><div className="p-4">{children}</div></section>; }
+function Row({ label, value }: { label: string; value: string }) { return <div className="flex min-w-0 items-baseline justify-between gap-4 py-0.5 text-[12px]"><span style={{ color: 'var(--os-text-muted)' }}>{label}</span><span className="mono min-w-0 break-words text-right" style={{ color: 'var(--os-text-2)' }}>{value}</span></div>; }
+function Value({ label, value, unit, color }: { label: string; value: string; unit?: string; color?: string }) { return <div><div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: 'var(--os-text-muted)' }}>{label}</div><div className="mono mt-1 text-[16px] font-semibold" style={{ color: color ?? 'var(--os-text)' }}>{value}{unit && <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--os-text-3)' }}>{unit}</span>}</div></div>; }

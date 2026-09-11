@@ -13,6 +13,8 @@ import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D, type Research3DPoint } from '@/integration';
 import { DepthInspectorScene, type InspectorViewControls } from '@/components/visualization/research3d/DepthInspectorScene';
 import { exportProfileCSV, exportComparisonCSV } from '@/utils/export';
+import { LatestAvailableDataMode } from '@/components/workspace/LatestAvailableDataMode';
+import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 
 export const ResearchWorkstation: React.FC = () => {
   const viewControlsRef = useRef<InspectorViewControls | null>(null);
@@ -30,6 +32,7 @@ export const ResearchWorkstation: React.FC = () => {
     colorScale,
     activeLayers,
     selectResearchObservation,
+    researchDataMode,
   } = useOceanStore();
 
   const [activeProperty, setActiveProperty] = useState<'temperature' | 'salinity'>(
@@ -59,9 +62,34 @@ export const ResearchWorkstation: React.FC = () => {
     variable: activeProperty,
     date: selectedDate,
     time: selectedTime,
-    selectedObservationId,
+    selectedObservationId: researchDataMode === 'benchmark' && selectedObservationId?.startsWith('argo_') ? selectedObservationId : null,
     selectedDepth,
   });
+
+  const latestStream = useLatestDataStream();
+  const latestProfile = React.useMemo(() => latestStream.observations.find((profile) =>
+    selectedObservationId === `latest_argo_${profile.platform_id}_${profile.cycle_number ?? profile.profile_id}`
+  ) ?? latestStream.observations[0] ?? null, [latestStream.observations, selectedObservationId]);
+  const latestProfilePoints = React.useMemo<Research3DPoint[]>(() => latestProfile?.levels.map((level) => ({
+    latitude: latestProfile.latitude, longitude: latestProfile.longitude, pressure: level.pressure,
+    argoValue: activeProperty === 'temperature' ? level.temperature : level.salinity,
+    // There is no operational model value. NaN is a deliberate unavailable
+    // sentinel; no GLORYS/difference geometry is rendered in Latest mode.
+    glorysValue: Number.NaN, difference: Number.NaN, timestamp: latestProfile.observation_time,
+    platformNumber: latestProfile.platform_id, cycleNumber: String(latestProfile.cycle_number ?? ''),
+  })) ?? [], [activeProperty, latestProfile]);
+  const latestScenePoints = React.useMemo<Research3DPoint[]>(() => latestStream.observations.flatMap((profile) => profile.levels.map((level) => ({
+    latitude: profile.latitude, longitude: profile.longitude, pressure: level.pressure,
+    argoValue: activeProperty === 'temperature' ? level.temperature : level.salinity,
+    glorysValue: Number.NaN, difference: Number.NaN, timestamp: profile.observation_time,
+    platformNumber: profile.platform_id, cycleNumber: String(profile.cycle_number ?? ''),
+  }))), [activeProperty, latestStream.observations]);
+  const displayedPoints = researchDataMode === 'latest' ? latestProfilePoints : points;
+  const displayedProfilePoints = researchDataMode === 'latest' ? latestProfilePoints : selectedProfilePoints;
+  const sceneProfilePoints = researchDataMode === 'latest' ? latestScenePoints : displayedProfilePoints;
+  const displayedMeasurement = researchDataMode === 'latest'
+    ? displayedProfilePoints.reduce<Research3DPoint | null>((closest, point) => !closest || Math.abs(point.pressure - selectedDepth) < Math.abs(closest.pressure - selectedDepth) ? point : closest, null)
+    : selectedMeasurement;
 
   const propertyUnits = {
     temperature: '°C (ITS-90)',
@@ -76,16 +104,16 @@ export const ResearchWorkstation: React.FC = () => {
   // Group points by profile
   const profileGroups = React.useMemo(() => {
     const map = new Map<string, Research3DPoint[]>();
-    for (const pt of points) {
+    for (const pt of displayedPoints) {
       const key = `argo_${pt.platformNumber}_${Math.trunc(parseFloat(pt.cycleNumber))}`;
       const existing = map.get(key) || [];
       existing.push(pt);
       map.set(key, existing);
     }
     return map;
-  }, [points]);
+  }, [displayedPoints]);
 
-  const uniqueProfiles = Array.from(profileGroups.entries()).map(([id, pts]) => ({
+  const benchmarkProfiles = Array.from(profileGroups.entries()).map(([id, pts]) => ({
     id,
     platform: pts[0]?.platformNumber || 'Unknown',
     cycle: pts[0]?.cycleNumber ? Math.trunc(parseFloat(pts[0].cycleNumber)) : 0,
@@ -93,6 +121,9 @@ export const ResearchWorkstation: React.FC = () => {
     lon: pts[0]?.longitude || 0,
     count: pts.length,
   }));
+  const uniqueProfiles = researchDataMode === 'latest'
+    ? latestStream.observations.map((profile) => ({ id: `latest_argo_${profile.platform_id}_${profile.cycle_number ?? profile.profile_id}`, platform: profile.platform_id, cycle: profile.cycle_number ?? 0, lat: profile.latitude, lon: profile.longitude, count: profile.levels.length, observedAt: profile.observation_time }))
+    : benchmarkProfiles;
 
   return (
     <div className="flex-1 bg-[#060a12] text-slate-200 flex flex-col overflow-hidden select-none font-sans">
@@ -134,13 +165,13 @@ export const ResearchWorkstation: React.FC = () => {
 
           <button 
             onClick={() => {
-              if (selectedMeasurement) {
-                exportComparisonCSV(selectedMeasurement, activeProperty, unit);
-              } else if (selectedProfilePoints.length > 0) {
-                exportProfileCSV(selectedProfilePoints, activeProperty, unit);
+              if (displayedMeasurement && researchDataMode === 'benchmark') {
+                exportComparisonCSV(displayedMeasurement, activeProperty, unit);
+              } else if (displayedProfilePoints.length > 0) {
+                exportProfileCSV(displayedProfilePoints, activeProperty, unit);
               }
             }}
-            disabled={selectedProfilePoints.length === 0}
+            disabled={displayedProfilePoints.length === 0}
             className="px-2.5 py-1 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-700 rounded flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-40"
           >
             <Download className="w-3.5 h-3.5 text-teal-400" />
@@ -148,6 +179,8 @@ export const ResearchWorkstation: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <LatestAvailableDataMode />
 
       {/* Main Multi-Panel Grid */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 p-2.5 overflow-y-auto">
@@ -171,7 +204,7 @@ export const ResearchWorkstation: React.FC = () => {
             <div className="flex-1 relative rounded border border-slate-800/80 bg-[#050912] overflow-hidden mt-2 min-h-[300px]">
               <DepthInspectorScene
                 className="h-full w-full"
-                profilePoints={selectedProfilePoints}
+                profilePoints={sceneProfilePoints}
                 unit={unit}
                 variable={activeProperty}
                 selectedDepth={selectedDepth}
@@ -184,11 +217,11 @@ export const ResearchWorkstation: React.FC = () => {
                     opacity: activeLayers.find((l) => l.id === 'observations')?.opacity ?? 1,
                   },
                   glorys: {
-                    visible: activeLayers.find((l) => l.id === 'models')?.enabled ?? true,
+                    visible: researchDataMode === 'benchmark' && (activeLayers.find((l) => l.id === 'models')?.enabled ?? true),
                     opacity: activeLayers.find((l) => l.id === 'models')?.opacity ?? 1,
                   },
                   discrepancies: {
-                    visible: activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? true,
+                    visible: researchDataMode === 'benchmark' && (activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? true),
                     opacity: activeLayers.find((l) => l.id === 'discrepancies')?.opacity ?? 0.85,
                   },
                   depthSlice: {
@@ -223,7 +256,7 @@ export const ResearchWorkstation: React.FC = () => {
                 </div>
               )}
 
-              {!selectedObservationId && !loading && (
+              {researchDataMode === 'benchmark' && !selectedObservationId && !loading && (
                 <div className="absolute inset-0 bg-[#050912]/70 flex items-center justify-center font-mono text-xs text-slate-400 p-6 text-center">
                   Select a comparative hydrographic cast below to inspect its water column in 3D.
                 </div>
@@ -266,7 +299,7 @@ export const ResearchWorkstation: React.FC = () => {
             <div className="flex items-center justify-between mb-2 text-xs font-mono">
               <div className="flex items-center space-x-2">
                 <GitCommit className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="font-semibold text-slate-200">Comparative Hydrographic Casts (Bay of Bengal)</span>
+                <span className="font-semibold text-slate-200">{researchDataMode === 'latest' ? 'Latest Argo Profiles (Bay of Bengal)' : 'Comparative Hydrographic Casts (Bay of Bengal)'}</span>
               </div>
               <span className="text-[10px] text-slate-500">{uniqueProfiles.length} profiles available</span>
             </div>
@@ -281,7 +314,7 @@ export const ResearchWorkstation: React.FC = () => {
                     onClick={() => selectResearchObservation({
                       id: prof.id,
                       location: { latitude: prof.lat, longitude: prof.lon },
-                      date: selectedDate,
+                      date: researchDataMode === 'latest' && 'observedAt' in prof ? String(prof.observedAt) : selectedDate,
                     })}
                     className={`p-2 rounded border text-left transition-colors cursor-pointer ${
                       isSelected
@@ -309,37 +342,36 @@ export const ResearchWorkstation: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-mono">
               <div className="flex items-center space-x-2">
                 <LineChart className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="font-semibold text-slate-200 uppercase">
-                  Vertical Profile: Argo vs GLORYS
-                </span>
+                <span className="font-semibold text-slate-200 uppercase">{researchDataMode === 'latest' ? 'Vertical Profile: Latest Argo Measurement' : 'Vertical Profile: Argo vs GLORYS'}</span>
               </div>
-              <span className="text-[10px] text-teal-400 bg-teal-950 px-1.5 py-0.5 rounded border border-teal-800/60">
+              {researchDataMode === 'benchmark' && <span className="text-[10px] text-teal-400 bg-teal-950 px-1.5 py-0.5 rounded border border-teal-800/60">
                 GLORYS − Argo
-              </span>
+              </span>}
             </div>
 
             {/* Profile Plot SVG */}
             <div className="pt-2 flex-1 flex items-center justify-center">
               <ProfileSvgChart
-                points={selectedProfilePoints}
+                points={displayedProfilePoints}
                 variable={activeProperty}
                 unit={unit}
-                selectedMeasurement={selectedMeasurement}
+                selectedMeasurement={displayedMeasurement}
+                latestOnly={researchDataMode === 'latest'}
               />
             </div>
 
             {/* Evidence Readings at selected depth */}
-            {selectedMeasurement && (
+            {displayedMeasurement && researchDataMode === 'benchmark' && (
               <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono">
                 <span className="text-slate-400">
-                  Argo: <strong className="text-cyan-400">{selectedMeasurement.argoValue.toFixed(2)}</strong> {unit}
+                  Argo: <strong className="text-cyan-400">{displayedMeasurement.argoValue.toFixed(2)}</strong> {unit}
                 </span>
                 <span className="text-slate-400">
-                  GLORYS: <strong className="text-purple-400">{selectedMeasurement.glorysValue.toFixed(2)}</strong> {unit}
+                  GLORYS: <strong className="text-purple-400">{displayedMeasurement.glorysValue.toFixed(2)}</strong> {unit}
                 </span>
                 <span className="text-slate-400">
-                  Diff: <strong className={selectedMeasurement.difference >= 0 ? 'text-amber-400' : 'text-blue-400'}>
-                    {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(2)}
+                  Diff: <strong className={displayedMeasurement.difference >= 0 ? 'text-amber-400' : 'text-blue-400'}>
+                    {displayedMeasurement.difference > 0 ? '+' : ''}{displayedMeasurement.difference.toFixed(2)}
                   </strong>
                 </span>
               </div>
@@ -389,11 +421,13 @@ function ProfileSvgChart({
   variable,
   unit,
   selectedMeasurement,
+  latestOnly = false,
 }: {
   points: Research3DPoint[];
   variable: string;
   unit: string;
   selectedMeasurement: Research3DPoint | null;
+  latestOnly?: boolean;
 }) {
   if (points.length === 0) {
     return (
@@ -419,7 +453,7 @@ function ProfileSvgChart({
     }))
     .sort((a, b) => a.depth - b.depth);
 
-  const allVals = profile.flatMap(p => [p.argo, p.glorys]);
+  const allVals = profile.flatMap(p => latestOnly ? [p.argo] : [p.argo, p.glorys]).filter(Number.isFinite);
   const minVal = Math.min(...allVals);
   const maxVal = Math.max(...allVals);
   const maxDepth = Math.max(500, Math.max(...profile.map(p => p.depth)));
@@ -471,7 +505,7 @@ function ProfileSvgChart({
       <polyline points={argoPath} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 2" />
 
       {/* GLORYS trace (Purple solid) */}
-      <polyline points={glorysPath} fill="none" stroke="#a78bfa" strokeWidth="2" />
+      {!latestOnly && <polyline points={glorysPath} fill="none" stroke="#a78bfa" strokeWidth="2" />}
 
       {/* Active Measurement point indicator */}
       {selectedMeasurement && (
@@ -486,7 +520,7 @@ function ProfileSvgChart({
             strokeDasharray="2 2"
           />
           <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r="3.5" fill="#22d3ee" stroke="#ffffff" strokeWidth="1" />
-          <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r="3.5" fill="#a78bfa" stroke="#ffffff" strokeWidth="1" />
+          {!latestOnly && <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r="3.5" fill="#a78bfa" stroke="#ffffff" strokeWidth="1" />}
         </g>
       )}
 

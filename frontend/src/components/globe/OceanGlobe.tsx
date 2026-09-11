@@ -7,6 +7,8 @@ import { regions } from '@/config/regions';
 import { fetchObservations } from '@/services/observationService';
 import type { ObservationPoint } from '@/types/observation';
 import { RESEARCH_DATA_COVERAGE } from '@/config/researchDataCoverage';
+import { useLatestDataStream } from '@/hooks/useLatestDataStream';
+import { LATEST_ARGO_DENIM_GREEN, type LatestArgoObservation } from '@/services/latestDataStream';
 
 // Configure Cesium Ion access token from environment
 const cesiumIonToken = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN as string | undefined;
@@ -18,6 +20,8 @@ export function OceanGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const markersRef = useRef<Cesium.Entity[]>([]);
+  const latestArgoEntitiesRef = useRef(new Map<string, Cesium.Entity>());
+  const latestArgoRef = useRef<LatestArgoObservation[]>([]);
   const initialCameraSetRef = useRef(false);
   const initialRegionNavigationHandledRef = useRef(false);
   const pendingFitTriggerRef = useRef<number | null>(null);
@@ -38,6 +42,8 @@ export function OceanGlobe() {
   const [observationsLoading, setObservationsLoading] = useState(true);
   const [viewerReady, setViewerReady] = useState(false);
   const [sceneImageryReady, setSceneImageryReady] = useState(false);
+  const [selectedLatestArgo, setSelectedLatestArgo] = useState<LatestArgoObservation | null>(null);
+  const latestStream = useLatestDataStream();
 
   const resetAutoRotation = useCallback(() => {
     autoRotationActiveRef.current = false;
@@ -197,6 +203,15 @@ export function OceanGlobe() {
         // First: check if the user clicked on an observation marker
         const picked = viewer.scene.pick(movement.position);
         if (Cesium.defined(picked) && picked.id && picked.id.properties) {
+          const latestProfileId = picked.id.properties.latestArgoProfileId?.getValue();
+          if (latestProfileId) {
+            const profile = latestArgoRef.current.find((item) => item.profile_id === latestProfileId);
+            if (profile) {
+              setSelectedLatestArgo(profile);
+              selectResearchObservation({ id: `latest_argo_${profile.platform_id}_${profile.cycle_number ?? profile.profile_id}`, location: { latitude: profile.latitude, longitude: profile.longitude }, date: profile.observation_time.substring(0, 10) });
+              return;
+            }
+          }
           const obsId = picked.id.properties.observationId?.getValue();
           if (obsId) {
             const obs = observationsRef.current.find((o) => o.id === obsId);
@@ -418,6 +433,29 @@ export function OceanGlobe() {
     observationsRef.current = observations;
   }, [observations]);
 
+  // A stable, diffed layer for real latest-available Argo profiles. Updating
+  // entities is intentionally camera-free: data refreshes never navigate the globe.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !sceneImageryReady) return;
+    latestArgoRef.current = latestStream.observations;
+    const desired = new Set(latestStream.observations.map((profile) => `latest-argo-${profile.profile_id}`));
+    latestArgoEntitiesRef.current.forEach((entity, id) => {
+      if (!desired.has(id)) { viewer.entities.remove(entity); latestArgoEntitiesRef.current.delete(id); }
+    });
+    latestStream.observations.forEach((profile) => {
+      const id = `latest-argo-${profile.profile_id}`;
+      const existing = latestArgoEntitiesRef.current.get(id);
+      if (existing) { existing.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(profile.longitude, profile.latitude, 0)); return; }
+      latestArgoEntitiesRef.current.set(id, viewer.entities.add({
+        id, position: Cesium.Cartesian3.fromDegrees(profile.longitude, profile.latitude, 0),
+        point: { pixelSize: 11, color: Cesium.Color.fromCssColorString(LATEST_ARGO_DENIM_GREEN).withAlpha(0.96), outlineColor: Cesium.Color.fromCssColorString('#a7d2c2').withAlpha(0.9), outlineWidth: 2, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+        label: { text: `ARGO ${profile.platform_id} · ${profile.cycle_number ?? '—'}`, font: '10px monospace', fillColor: Cesium.Color.fromCssColorString('#cfe6dc'), style: Cesium.LabelStyle.FILL_AND_OUTLINE, outlineColor: Cesium.Color.BLACK, outlineWidth: 2, verticalOrigin: Cesium.VerticalOrigin.BOTTOM, pixelOffset: new Cesium.Cartesian2(0, -15), showBackground: true, backgroundColor: Cesium.Color.fromCssColorString('#173c32').withAlpha(0.85), backgroundPadding: new Cesium.Cartesian2(4, 2), disableDepthTestDistance: Number.POSITIVE_INFINITY },
+        properties: { latestArgoProfileId: profile.profile_id, source: 'Argo GDAC', observationTime: profile.observation_time, retrievedAt: profile.provenance.retrieved_at },
+      }));
+    });
+  }, [latestStream.observations, sceneImageryReady]);
+
   // Show observation points — API stations + research coverage locations
   // Only show after both viewer AND imagery are ready
   useEffect(() => {
@@ -594,6 +632,9 @@ export function OceanGlobe() {
           </div>
         </div>
       )}
+
+      {latestStream.observations.length > 0 && <div className="absolute bottom-8 left-2 border border-[#3F7F6A]/70 bg-[#08111f]/90 px-2 py-1 text-[10px] text-slate-300"><span className="text-[#83b7a4]">● Latest Argo observations</span> · Argo GDAC</div>}
+      {selectedLatestArgo && <div className="absolute bottom-3 right-3 z-20 w-64 border border-[#3F7F6A]/70 bg-[#08111f]/95 p-3 text-[11px] text-slate-300 shadow-lg"><button type="button" className="float-right text-slate-500 hover:text-slate-200" onClick={() => setSelectedLatestArgo(null)}>×</button><div className="font-mono text-[10px] uppercase tracking-wider text-[#83b7a4]">Latest Argo observation</div><div className="mt-1 font-semibold">Float {selectedLatestArgo.platform_id} · Cycle {selectedLatestArgo.cycle_number ?? '—'}</div><div>{selectedLatestArgo.latitude.toFixed(5)}° {selectedLatestArgo.latitude >= 0 ? 'N' : 'S'} · {selectedLatestArgo.longitude.toFixed(5)}° {selectedLatestArgo.longitude >= 0 ? 'E' : 'W'}</div><div className="mt-1">Observed: {new Date(selectedLatestArgo.observation_time).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</div><div>Retrieved: {new Date(selectedLatestArgo.provenance.retrieved_at).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</div><div>Variables: Temperature · Salinity</div><div>Depth: {selectedLatestArgo.provenance.depth_range.join('–')} dbar · QC 1/2: {selectedLatestArgo.qc.accepted_levels} levels</div><div className="mt-1 text-slate-500">Source: Argo GDAC</div></div>}
 
       {/* Globe instruction hint */}
       <div className="absolute bottom-2 left-2 px-2 py-1 text-[9px]" style={{ background: 'rgba(8,12,22,0.85)', color: 'var(--os-text-muted)' }}>

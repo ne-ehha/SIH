@@ -1273,16 +1273,30 @@ function InspectorScene({
     }));
   }, [sorted, fieldConfig]);
 
+  const profileOffsets = useMemo(() => {
+    const keys = [...new Set(sorted.map((point) => `${point.platformNumber}:${point.cycleNumber}`))];
+    return new Map(keys.map((key, index) => [key, (index - (keys.length - 1) / 2) * 0.32]));
+  }, [sorted]);
+
   const records: PositionedRecord[] = useMemo(
-    () =>
-      sorted.map((point) => ({
+    () => sorted.map((point) => {
+      const offset = profileOffsets.get(`${point.platformNumber}:${point.cycleNumber}`) ?? 0;
+      return ({
         point,
         y: pressureToY(point.pressure, verticalExaggeration),
-        argoX: -ARGO_X_OFFSET,
-        glorysX: GLORYS_X_OFFSET,
-      })),
-    [sorted, verticalExaggeration],
+        argoX: -ARGO_X_OFFSET + offset,
+        glorysX: GLORYS_X_OFFSET + offset,
+      });
+    }), [sorted, verticalExaggeration, profileOffsets],
   );
+  const profileRecordGroups = useMemo(() => {
+    const groups = new Map<string, PositionedRecord[]>();
+    records.forEach((record) => {
+      const key = `${record.point.platformNumber}:${record.point.cycleNumber}`;
+      groups.set(key, [...(groups.get(key) ?? []), record]);
+    });
+    return [...groups.values()];
+  }, [records]);
 
   // Shared selector guarantees this is the same real record used by Research charts/cards.
   const nearestRecord = useMemo(() => {
@@ -1336,18 +1350,12 @@ function InspectorScene({
           color from the canonical color scale (identity colors when unset). */}
       {layers.argo.visible && (
         <>
-          <ProfileLine
-            records={records}
-            xPosition={-ARGO_X_OFFSET}
-            color={fieldConfig ? undefined : ARGO_COLOR}
-            colorFromValues={recordColors?.map((c) => c.argo) ?? null}
-            opacity={layers.argo.opacity}
-          />
+          {profileRecordGroups.map((group) => <ProfileLine key={`argo-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`} records={group} xPosition={group[0]?.argoX ?? -ARGO_X_OFFSET} color={fieldConfig ? undefined : ARGO_COLOR} colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].argo) : null} opacity={layers.argo.opacity} />)}
           {records.map((r, i) => (
             <MeasurementPoint
               key={`argo-${i}`}
               record={r}
-              xPosition={-ARGO_X_OFFSET}
+              xPosition={r.argoX}
               color={fieldConfig ? valueToColor(r.point.argoValue, fieldConfig) : ARGO_COLOR}
               unit={unit}
               variable={variable}
@@ -1362,18 +1370,12 @@ function InspectorScene({
       {/* GLORYS profile — same canonical wiring as Argo */}
       {layers.glorys.visible && (
         <>
-          <ProfileLine
-            records={records}
-            xPosition={GLORYS_X_OFFSET}
-            color={fieldConfig ? undefined : GLORYS_COLOR}
-            colorFromValues={recordColors?.map((c) => c.glorys) ?? null}
-            opacity={layers.glorys.opacity}
-          />
+          {profileRecordGroups.map((group) => <ProfileLine key={`glorys-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`} records={group} xPosition={group[0]?.glorysX ?? GLORYS_X_OFFSET} color={fieldConfig ? undefined : GLORYS_COLOR} colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].glorys) : null} opacity={layers.glorys.opacity} />)}
           {records.map((r, i) => (
             <MeasurementPoint
               key={`glorys-${i}`}
               record={r}
-              xPosition={GLORYS_X_OFFSET}
+              xPosition={r.glorysX}
               color={fieldConfig ? valueToColor(r.point.glorysValue, fieldConfig) : GLORYS_COLOR}
               unit={unit}
               variable={variable}

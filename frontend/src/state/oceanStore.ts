@@ -34,6 +34,7 @@ interface OceanStore {
 
   // Observation state
   selectedObservationId: string | null;
+  researchDataMode: 'benchmark' | 'latest';
 
   // API state
   apiStatus: 'idle' | 'loading' | 'success' | 'error';
@@ -62,6 +63,7 @@ interface OceanStore {
   setTimeIndex: (index: number) => void;
   stepTime: (delta: number) => void;
   setSelectedObservationId: (id: string | null) => void;
+  setResearchDataMode: (mode: 'benchmark' | 'latest') => void;
   selectResearchObservation: (selection: { id: string; location: Location; date: string }) => void;
   clearSelectedObservation: () => void;
   setApiStatus: (status: 'idle' | 'loading' | 'success' | 'error') => void;
@@ -131,6 +133,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
   verticalExaggeration: 1,
   timeIndex: 5, // '2024-01-10' within OBSERVATION_DATES
   selectedObservationId: null,
+  researchDataMode: 'benchmark',
   apiStatus: 'idle',
   fitAllObservationsTrigger: 0,
 
@@ -198,6 +201,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
     });
   },
   setSelectedObservationId: (id) => set({ selectedObservationId: id }),
+  setResearchDataMode: (mode) => set({ researchDataMode: mode }),
   // Keep marker identity, location, and observation date atomic for Research Mode.
   selectResearchObservation: ({ id, location, date }) => set((state) => ({
     selectedObservationId: id,
