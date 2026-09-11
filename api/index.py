@@ -1,13 +1,7 @@
-"""
-Vercel Serverless Entry Point for OceanScope FastAPI Backend.
+"""Vercel entry point for the OceanScope FastAPI application.
 
-This module wraps the existing FastAPI application for deployment
-as a Vercel Python Serverless Function. All routes, middleware,
-and logic remain in the original backend/app/ package.
+Vercel's Python runtime discovers the exported ASGI ``app`` and preserves the
+incoming ``/api/v1/...`` pathname for FastAPI routing.
 """
 
-from mangum import Mangum
 from backend.app.main import app
-
-# Mangum adapts ASGI apps to AWS Lambda / Vercel serverless
-handler = Mangum(app, lifespan="auto")

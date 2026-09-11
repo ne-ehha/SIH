@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Database, FileText, Layers3, MapPin } from 'lucide-react';
 import { DATA_SOURCES, type OceanDataSource } from '@/config/dataSources';
+import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 
 const configuredSources = DATA_SOURCES.filter((source) => source.status === 'available');
 
@@ -12,6 +13,7 @@ const sourceRoles: Record<string, string> = {
 
 export const DataServicesWorkspace: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<OceanDataSource>(configuredSources[0]);
+  const stream = useLatestDataStream();
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#060a12] font-sans text-slate-200">
@@ -25,6 +27,10 @@ export const DataServicesWorkspace: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto p-4">
         <div className="mx-auto max-w-6xl space-y-4">
+          <section className="border border-slate-800 bg-[#09101d] p-4 text-[12px]">
+            <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-100">Latest data stream</h2><p className="mt-1 text-slate-400">One shared latest-available official-data stream; not a benchmark or simulated feed.</p></div><button type="button" onClick={() => void stream.refreshNow()} disabled={stream.status === 'loading'} className="border border-[#3F7F6A]/70 px-2 py-1 text-[#83b7a4] disabled:opacity-50">{stream.status === 'loading' ? 'Fetching…' : 'Refresh Now'}</button></div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="border border-[#3F7F6A]/50 bg-[#3F7F6A]/10 p-3"><div className="font-medium text-[#83b7a4]">● Argo GDAC · {stream.status === 'connected' ? 'Available' : stream.status === 'error' ? 'Error' : 'Waiting'}</div><div className="mt-1 text-slate-300">Profiles: {stream.observations.length} · Region: Bay of Bengal · Variables: Temperature, Salinity · Depth: 0–500 dbar</div><div className="mt-1 text-slate-400">Last checked: {stream.lastCheckedAt ? new Date(stream.lastCheckedAt).toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC' : '—'}</div><div className="text-slate-400">Latest observation: {stream.latestObservationAt ? new Date(stream.latestObservationAt).toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC' : '—'}</div>{stream.error && <div className="mt-1 text-rose-300">Last update failed: {stream.error}</div>}</div><div className="border border-amber-900/60 bg-amber-950/15 p-3"><div className="font-medium text-amber-200">Copernicus Marine Operational Model · Unavailable</div><div className="mt-1 text-slate-400">{stream.copernicus?.reason ?? 'No actual operational model subset is available.'}</div><div className="mt-1 text-slate-500">GLORYS12V1 remains the historical research benchmark, not live data.</div></div></div>
+          </section>
           <section className="border border-slate-800 bg-[#09101d] p-4">
             <h2 className="text-sm font-semibold text-slate-100">Source registry</h2>
             <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-slate-400">
