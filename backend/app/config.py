@@ -13,10 +13,20 @@ def _find_data_file(filename: str, preferred_dir: str = "") -> Path:
     candidates = []
     if preferred_dir:
         candidates.append(PROJECT_ROOT / preferred_dir / filename)
+        candidates.append(Path(__file__).resolve().parent.parent / "data" / filename)
+        candidates.append(Path.cwd() / preferred_dir / filename)
+        candidates.append(Path("/var/task") / preferred_dir / filename)
     candidates.extend([
-        PROJECT_ROOT / filename,
+        Path(__file__).resolve().parent.parent / "data" / filename,
         PROJECT_ROOT / "backend" / "data" / filename,
         PROJECT_ROOT / "processed" / filename,
+        PROJECT_ROOT / filename,
+        Path.cwd() / "backend" / "data" / filename,
+        Path.cwd() / "processed" / filename,
+        Path.cwd() / filename,
+        Path("/var/task/backend/data") / filename,
+        Path("/var/task/processed") / filename,
+        Path("/var/task") / filename,
     ])
     for p in candidates:
         if p.exists():

@@ -24,6 +24,8 @@ def _find_raw_dir() -> Path:
         PROJECT_ROOT / "data" / "raw",
         Path.cwd() / "backend" / "data" / "raw",
         Path.cwd() / "data" / "raw",
+        Path("/var/task/backend/data/raw"),
+        Path("/var/task/data/raw"),
     ]
     for c in candidates:
         if c.exists():
@@ -33,8 +35,34 @@ def _find_raw_dir() -> Path:
 RAW_DIR = _find_raw_dir()
 
 
+def _find_dataset_file(rel_path: str) -> Optional[Path]:
+    rel_normalized = Path(rel_path)
+    search_roots = [
+        RAW_DIR,
+        Path(__file__).resolve().parent.parent / "data" / "raw",
+        Path(__file__).resolve().parent.parent / "data",
+        PROJECT_ROOT / "backend" / "data" / "raw",
+        PROJECT_ROOT / "data" / "raw",
+        PROJECT_ROOT / "backend" / "data",
+        PROJECT_ROOT / "data",
+        Path.cwd() / "backend" / "data" / "raw",
+        Path.cwd() / "data" / "raw",
+        Path.cwd() / "backend" / "data",
+        Path.cwd() / "data",
+        Path("/var/task/backend/data/raw"),
+        Path("/var/task/data/raw"),
+        Path("/var/task/backend/data"),
+        Path("/var/task"),
+    ]
+    for r in search_roots:
+        target = r / rel_normalized
+        if target.exists():
+            return target
+    return None
+
+
 def sha256_file(filepath: Path) -> str:
-    if not filepath.exists():
+    if not filepath or not filepath.exists():
         return ""
     h = hashlib.sha256()
     with open(filepath, "rb") as f:
@@ -47,8 +75,8 @@ def load_real_bgc_argo_profiles() -> list[dict[str, Any]]:
     profiles = []
 
     # 1. Float 5906248 (with Temp, Sal, Chl, O2, Nitrate)
-    p1_file = RAW_DIR / "aoml" / "bgc_argo" / "5906248" / "SD5906248_001.nc"
-    if p1_file.exists():
+    p1_file = _find_dataset_file("aoml/bgc_argo/5906248/SD5906248_001.nc")
+    if p1_file and p1_file.exists():
         try:
             f = nc.Dataset(str(p1_file))
             pres = f.variables["PRES"][0]
@@ -103,8 +131,8 @@ def load_real_bgc_argo_profiles() -> list[dict[str, Any]]:
             print(f"Error reading BGC float 5906248: {e}")
 
     # 2. Float 6903093 (with Temp, Sal, Chl, O2)
-    p2_file = RAW_DIR / "coriolis" / "bgc_argo" / "6903093" / "SD6903093_001.nc"
-    if p2_file.exists():
+    p2_file = _find_dataset_file("coriolis/bgc_argo/6903093/SD6903093_001.nc")
+    if p2_file and p2_file.exists():
         try:
             f = nc.Dataset(str(p2_file))
             pres = f.variables["PRES"][0]
@@ -162,8 +190,8 @@ def load_real_bgc_argo_profiles() -> list[dict[str, Any]]:
 
 def load_real_ctd_casts() -> list[dict[str, Any]]:
     casts = []
-    ctd_file = RAW_DIR / "cchdo" / "ctd" / "06AQ20101128_00013_00001_ctd.nc"
-    if ctd_file.exists():
+    ctd_file = _find_dataset_file("cchdo/ctd/06AQ20101128_00013_00001_ctd.nc")
+    if ctd_file and ctd_file.exists():
         try:
             f = nc.Dataset(str(ctd_file))
             pres = f.variables["pressure"][:]
@@ -230,8 +258,8 @@ def load_real_ctd_casts() -> list[dict[str, Any]]:
 
 def load_real_glider_profiles() -> list[dict[str, Any]]:
     profiles = []
-    glider_file = RAW_DIR / "imos_oceangliders" / "slocum_glider" / "IMOS_ANFOG_Kimberley.nc"
-    if glider_file.exists():
+    glider_file = _find_dataset_file("imos_oceangliders/slocum_glider/IMOS_ANFOG_Kimberley.nc")
+    if glider_file and glider_file.exists():
         try:
             f = nc.Dataset(str(glider_file))
             pres = f.variables["PRES"][:]
