@@ -29,6 +29,7 @@ import { useResearchVisualization3D, type Research3DPoint } from '@/integration'
 import { DepthInspectorScene, type InspectorViewControls } from '@/components/visualization/research3d/DepthInspectorScene';
 import { getDatasetVisualConfig, resolveScientificReference } from '@/config/datasetVisualConfig';
 import { exportProfileCSV, exportComparisonCSV } from '@/utils/export';
+import { formatLatitude, formatLongitude } from '@/utils/coordinates';
 import { LatestAvailableDataMode } from '@/components/workspace/LatestAvailableDataMode';
 import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 import { useObservationDiscovery } from '@/hooks/useObservationDiscovery';
@@ -759,7 +760,7 @@ export const ResearchWorkstation: React.FC = () => {
                     <span className="w-2 h-2 rounded-full bg-teal-400" />
                   </div>
                   <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                    {discoveryHook.selectedProfile.cycle_number ? `Cycle #${discoveryHook.selectedProfile.cycle_number}` : 'Station Profile'} • {discoveryHook.selectedProfile.latitude.toFixed(2)}°N, {discoveryHook.selectedProfile.longitude.toFixed(2)}°E
+                    {discoveryHook.selectedProfile.cycle_number ? `Cycle #${discoveryHook.selectedProfile.cycle_number}` : 'Station Profile'} • {formatLatitude(discoveryHook.selectedProfile.latitude)}, {formatLongitude(discoveryHook.selectedProfile.longitude)}
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">
                     Observed: {discoveryHook.selectedProfile.observation_timestamp.slice(0, 16).replace('T', ' ')}Z
@@ -1129,7 +1130,7 @@ export const ResearchWorkstation: React.FC = () => {
                 </div>
                 <div className="space-y-1 text-slate-300">
                   <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">1. Schema:</span> Mandatory coordinates, time, levels verified.</div>
-                  <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">2. Georeference:</span> WGS84 coordinates validated ({discoveryHook.selectedProfile ? `${discoveryHook.selectedProfile.latitude.toFixed(2)}°N, ${discoveryHook.selectedProfile.longitude.toFixed(2)}°E` : 'Bay of Bengal'}).</div>
+                  <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">2. Georeference:</span> WGS84 coordinates validated ({discoveryHook.selectedProfile ? `${formatLatitude(discoveryHook.selectedProfile.latitude)}, ${formatLongitude(discoveryHook.selectedProfile.longitude)}` : 'Bay of Bengal'}).</div>
                   <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">3. Fill Filter:</span> NetCDF sentinels (-1e34, 1.267e30, 99999) rejected.</div>
                   <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">4. QC Policy:</span> WMO/Argo QF 1 (Good) & 2 (Prob. Good) accepted.</div>
                   <div className="flex items-start gap-1.5"><span className="text-teal-400 font-bold">5. Water Column:</span> Monotonic vertical sorting & duplicate depth collapsing.</div>

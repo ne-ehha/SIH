@@ -19,6 +19,7 @@ import {
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D, type Research3DPoint } from '@/integration';
 import { exportProfileCSV } from '@/utils/export';
+import { formatLatitude, formatLongitude } from '@/utils/coordinates';
 import { useObservationDiscovery } from '@/hooks/useObservationDiscovery';
 import {
   evaluateScientificCollocation,
@@ -352,7 +353,7 @@ export const ProfileLab: React.FC = () => {
             >
               {availableStations.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} · ({p.lat.toFixed(2)}°N, {p.lon.toFixed(2)}°E)
+                  {p.name} · ({formatLatitude(p.lat)}, {formatLongitude(p.lon)})
                 </option>
               ))}
             </select>

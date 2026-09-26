@@ -5,6 +5,7 @@ import { useResearchVisualization3D } from '@/integration';
 import type { OceanVariable, Research3DPoint } from '@/integration/types';
 import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 import { getDatasetVisualConfig, resolveScientificReference } from '@/config/datasetVisualConfig';
+import { formatLatitude, formatLongitude } from '@/utils/coordinates';
 
 export function ResearchReport() {
   const { selectedLocation, selectedVariable, selectedDate, selectedTime, selectedDepth, selectedObservationId, researchDataMode, selectedPlatform } = useOceanStore();
@@ -51,7 +52,7 @@ export function ResearchReport() {
           <div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2">
             <Row label="In-situ Observation" value={`Float ${latestObs.platform_id} · Cycle ${latestObs.cycle_number ?? '—'}`} />
             <Row label="Observation Time (UTC)" value={latestObs.observation_time} />
-            <Row label="Coordinates" value={`${latestObs.latitude.toFixed(4)}°N, ${latestObs.longitude.toFixed(4)}°E`} />
+            <Row label="Coordinates" value={`${formatLatitude(latestObs.latitude)}, ${formatLongitude(latestObs.longitude)}`} />
             <Row label="Model Valid At" value={copernicus?.collocation?.model_time ?? '—'} />
             <Row label="Horizontal Distance" value={`${copernicus?.collocation?.horizontal_distance_km ?? 0} km`} />
             <Row label="Temporal Offset" value={`${copernicus?.collocation?.temporal_offset_hours ?? 0} hours`} />
