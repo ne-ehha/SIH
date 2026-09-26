@@ -21,6 +21,8 @@ def _find_raw_archive_dir() -> Path:
         Path(__file__).resolve().parent.parent / "data" / "raw",
         PROJECT_ROOT / "backend" / "data" / "raw",
         PROJECT_ROOT / "data" / "raw",
+        Path.cwd() / "backend" / "data" / "raw",
+        Path.cwd() / "data" / "raw",
     ]
     for c in candidates:
         if c.exists():

@@ -421,10 +421,10 @@ export const ResearchWorkstation: React.FC = () => {
   const handlePlatformChange = (plat: 'ALL' | 'ARGO' | 'GLIDER' | 'CTD' | 'BGC') => {
     setSelectedPlatform(plat);
     const PLATFORM_COORDS: Record<string, { lat: number; lon: number; id: string }> = {
-      BGC: { lat: 9.86, lon: 89.28, id: 'bgc_argo_6903093_1' },
+      BGC: { lat: 13.25, lon: 88.40, id: 'bgc_argo_6903093_1' },
       GLIDER: { lat: 13.90, lon: 87.50, id: 'glider_SL416_m1' },
       CTD: { lat: 12.80, lon: 86.90, id: 'ctd_06AQ20101128_stn13' },
-      ARGO: { lat: 14.28, lon: 88.52, id: 'argo_2902766_14' },
+      ARGO: { lat: 13.34, lon: 88.35, id: 'argo_4903775' },
     };
     if (plat !== 'ALL' && PLATFORM_COORDS[plat]) {
       const target = PLATFORM_COORDS[plat];
