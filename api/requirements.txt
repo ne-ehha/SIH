@@ -13,3 +13,5 @@ requests>=2.31.0
 scipy>=1.10.0
 uvicorn>=0.23.0
 xarray>=2023.0.0
+h5netcdf>=1.1.0
+

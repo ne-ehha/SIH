@@ -320,3 +320,41 @@ def load_real_glider_profiles() -> list[dict[str, Any]]:
             print(f"Error reading Glider mission: {e}")
 
     return profiles
+
+
+def get_raw_datasets_diagnostic() -> dict[str, Any]:
+    """Inspect and verify all real in-situ raw NetCDF datasets."""
+    targets = {
+        "bgc_6903093": "coriolis/bgc_argo/6903093/SD6903093_001.nc",
+        "bgc_5906248": "aoml/bgc_argo/5906248/SD5906248_001.nc",
+        "glider_sl416": "imos_oceangliders/slocum_glider/IMOS_ANFOG_Kimberley.nc",
+        "ctd_stn13": "cchdo/ctd/06AQ20101128_00013_00001_ctd.nc",
+    }
+    results = {}
+    for key, rel in targets.items():
+        p = _find_dataset_file(rel)
+        if p and p.exists():
+            try:
+                f = nc.Dataset(str(p))
+                v_names = list(f.variables.keys())
+                f.close()
+                results[key] = {
+                    "available": True,
+                    "resolved_path": str(p),
+                    "size_bytes": p.stat().st_size,
+                    "variables_count": len(v_names),
+                    "variables": v_names[:8],
+                }
+            except Exception as e:
+                results[key] = {
+                    "available": False,
+                    "resolved_path": str(p),
+                    "error": f"Open error: {e}",
+                }
+        else:
+            results[key] = {
+                "available": False,
+                "resolved_path": None,
+                "error": f"Path not found for {rel}",
+            }
+    return results

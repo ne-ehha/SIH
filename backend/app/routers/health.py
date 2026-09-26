@@ -19,6 +19,7 @@ from ..config import (
     COMPARISON_VARIABLES,
 )
 from ..datasets import get_hycom, get_argo, get_collocation
+from ..real_observation_loader import get_raw_datasets_diagnostic
 
 router = APIRouter()
 
@@ -136,6 +137,7 @@ def health_check():
                     "variables": COMPARISON_VARIABLES,
                     "pipeline": "A",
                 },
+                "raw_insitu": get_raw_datasets_diagnostic(),
             },
             "pipelines": {
                 "A": {
