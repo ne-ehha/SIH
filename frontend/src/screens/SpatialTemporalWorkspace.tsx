@@ -15,6 +15,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { useOceanStore } from '@/state/oceanStore';
+import { useWorkspaceTransition } from '@/components/layout/WorkspaceTransition';
 import { OceanGlobe } from '@/components/globe/OceanGlobe';
 import { CoordinateMarker } from '@/components/globe/CoordinateMarker';
 import { ObservationPoints } from '@/components/globe/ObservationPoints';
@@ -24,6 +25,15 @@ import { variables } from '@/config/variables';
 
 export const SpatialTemporalWorkspace: React.FC = () => {
   const navigate = useNavigate();
+  const { openWorkspace } = useWorkspaceTransition();
+
+  useEffect(() => {
+    console.log('[LIFECYCLE] MOUNT SPATIAL WORKSPACE');
+    return () => {
+      console.log('[LIFECYCLE] UNMOUNT SPATIAL WORKSPACE');
+    };
+  }, []);
+
   const {
     selectedLocation,
     selectedDepth,
@@ -33,7 +43,10 @@ export const SpatialTemporalWorkspace: React.FC = () => {
     selectedDate,
     setSelectedDate,
     selectedObservationId,
+    selectedPlatform,
     triggerFitAllObservations,
+    availableDates,
+    datasetTemporalRange,
     stepTime,
     timeIndex,
   } = useOceanStore();
@@ -41,16 +54,16 @@ export const SpatialTemporalWorkspace: React.FC = () => {
   const [isPlayingTime, setIsPlayingTime] = useState<boolean>(false);
   const [showFloats, setShowFloats] = useState<boolean>(true);
 
-  // Time playback loop across OBSERVATION_DATES
+  // Time playback loop across availableDates of active dataset
   useEffect(() => {
-    if (!isPlayingTime) return;
+    if (!isPlayingTime || availableDates.length <= 1) return;
     const interval = setInterval(() => {
-      const currentIndex = OBSERVATION_DATES.indexOf(selectedDate as any);
-      const nextIndex = (currentIndex + 1) % OBSERVATION_DATES.length;
-      setSelectedDate(OBSERVATION_DATES[nextIndex]);
+      const currentIndex = availableDates.indexOf(selectedDate);
+      const nextIndex = (currentIndex + 1) % availableDates.length;
+      setSelectedDate(availableDates[nextIndex]);
     }, 2000);
     return () => clearInterval(interval);
-  }, [isPlayingTime, selectedDate, setSelectedDate]);
+  }, [isPlayingTime, selectedDate, setSelectedDate, availableDates]);
 
   // Color map configuration for validated variables
   const layerLegends = {
@@ -60,14 +73,16 @@ export const SpatialTemporalWorkspace: React.FC = () => {
 
   const currentLegend = layerLegends[selectedVariable === 'salinity' ? 'salinity' : 'temperature'];
 
-  // Parse platform and cycle from observation ID (argo_{platform}_{cycle})
+  // Parse platform and cycle from observation ID
   let platformLabel = '';
   let cycleLabel = '';
   if (selectedObservationId) {
     const parts = selectedObservationId.split('_');
     if (parts.length >= 3) {
-      platformLabel = parts[1];
+      platformLabel = parts[0] === 'argo' ? `ARGO ${parts[1]}` : `${parts[0].toUpperCase()} ${parts[1]}`;
       cycleLabel = parts[2];
+    } else {
+      platformLabel = selectedObservationId.toUpperCase();
     }
   }
 
@@ -90,7 +105,7 @@ export const SpatialTemporalWorkspace: React.FC = () => {
           </div>
         </div>
 
-        {/* Layer Switcher Buttons: Validated OceanScope Variables */}
+        {/* Layer Switcher Buttons: Validated ViaDariya Variables */}
         <div className="flex items-center bg-slate-900 rounded p-0.5 border border-slate-800">
           <button
             id="btn-layer-temp"
@@ -164,7 +179,7 @@ export const SpatialTemporalWorkspace: React.FC = () => {
             </div>
           </div>
 
-          {/* Temporal Scrubber / Time Controls Bar (Mirrors OBSERVATION_DATES) */}
+          {/* Temporal Scrubber / Time Controls Bar (Mirrors availableDates) */}
           <div className="min-h-14 bg-[#09101c] border-t border-slate-800 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs z-20">
             <div className="flex items-center space-x-3">
               <button
@@ -175,7 +190,7 @@ export const SpatialTemporalWorkspace: React.FC = () => {
                 {isPlayingTime ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
               </button>
               <button
-                onClick={() => setSelectedDate(OBSERVATION_DATES[0])}
+                onClick={() => setSelectedDate(availableDates[0] || '2024-01-01')}
                 className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer"
                 title="Reset Time"
               >
@@ -189,22 +204,22 @@ export const SpatialTemporalWorkspace: React.FC = () => {
               </div>
             </div>
 
-            {/* Range Scrubber: 9 Observation Dates */}
+            {/* Range Scrubber: Dataset Active Observation Dates */}
             <div className="order-3 flex w-full min-w-0 items-center space-x-3 sm:order-none sm:flex-1 sm:max-w-md">
-              <span className="text-[10px] text-slate-500">JAN 01</span>
+              <span className="text-[10px] text-slate-500 uppercase">{availableDates[0] ? availableDates[0].substring(5) : 'START'}</span>
               <input
                 id="range-time-scrubber"
                 type="range"
                 min="0"
-                max={OBSERVATION_DATES.length - 1}
-                value={timeIndex >= 0 ? timeIndex : 0}
+                max={Math.max(0, availableDates.length - 1)}
+                value={timeIndex >= 0 && timeIndex < availableDates.length ? timeIndex : 0}
                 onChange={(e) => {
                   const idx = parseInt(e.target.value, 10);
-                  if (OBSERVATION_DATES[idx]) setSelectedDate(OBSERVATION_DATES[idx]);
+                  if (availableDates[idx]) setSelectedDate(availableDates[idx]);
                 }}
                 className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
               />
-              <span className="text-[10px] text-slate-500">JAN 14</span>
+              <span className="text-[10px] text-slate-500 uppercase">{availableDates[availableDates.length - 1] ? availableDates[availableDates.length - 1].substring(5) : 'END'}</span>
             </div>
 
             <div className="flex min-w-[13rem] items-center gap-2 rounded-md border border-slate-800 bg-slate-950/30 px-2.5 py-1.5 text-[11px]">
@@ -270,7 +285,7 @@ export const SpatialTemporalWorkspace: React.FC = () => {
                 <div className="pt-2 border-t border-slate-800 space-y-2">
                   <button
                     id="btn-inspect-research"
-                    onClick={() => navigate('/research')}
+                    onClick={() => openWorkspace('/research', 'Research Workstation')}
                     className="w-full py-1.5 px-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer font-sans font-medium"
                   >
                     <span>Inspect in Research 3D</span>
@@ -279,7 +294,7 @@ export const SpatialTemporalWorkspace: React.FC = () => {
 
                   <button
                     id="btn-inspect-profile-lab"
-                    onClick={() => navigate('/profile-lab')}
+                    onClick={() => openWorkspace('/profile-lab', 'Profile Lab')}
                     className="w-full py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
                   >
                     <span>Analyze in Profile Lab</span>

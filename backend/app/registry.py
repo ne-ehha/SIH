@@ -1,0 +1,1171 @@
+"""
+Authoritative Central Dataset and Variable Registry for OceanScope.
+
+Follows official Copernicus Marine Service (CMEMS), Argo GDAC, and INCOIS
+scientific conventions. Delineates Products vs. Datasets, enforces variable-dataset
+compatibility, and records temporal/spatial/vertical resolution, QC standards,
+and retrieval capabilities.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional
+
+
+# ── Canonical Variable Registry ──────────────────────────────────────────────
+
+VariableCategory = Literal["thermodynamic", "dynamic", "biogeochemical", "coordinate"]
+
+
+@dataclass(frozen=True)
+class VariableDefinition:
+    id: str  # Canonical ID in OceanScope (e.g. 'thetao', 'so', 'temperature', 'salinity')
+    display_name: str
+    cf_standard_name: Optional[str]
+    unit: str
+    category: VariableCategory
+    description: str
+    valid_range: tuple[float, float]
+    is_derived: bool = False
+    derived_expression: Optional[str] = None
+    aliases: tuple[str, ...] = ()
+
+
+VARIABLE_REGISTRY: dict[str, VariableDefinition] = {
+    "thetao": VariableDefinition(
+        id="thetao",
+        display_name="Potential Temperature (thetao)",
+        cf_standard_name="sea_water_potential_temperature",
+        unit="°C",
+        category="thermodynamic",
+        description="Sea water potential temperature referenced to sea surface pressure.",
+        valid_range=(-2.0, 38.0),
+        aliases=("temperature", "TEMP", "temp"),
+    ),
+    "temperature": VariableDefinition(
+        id="temperature",
+        display_name="In-Situ / Potential Temperature",
+        cf_standard_name="sea_water_temperature",
+        unit="°C",
+        category="thermodynamic",
+        description="Observed in-situ temperature or model potential temperature.",
+        valid_range=(-2.0, 38.0),
+        aliases=("thetao", "TEMP", "temp"),
+    ),
+    "so": VariableDefinition(
+        id="so",
+        display_name="Sea Water Practical Salinity (so)",
+        cf_standard_name="sea_water_salinity",
+        unit="PSU",
+        category="thermodynamic",
+        description="Practical salinity on the Practical Salinity Scale 1978.",
+        valid_range=(0.0, 44.0),
+        aliases=("salinity", "PSAL", "saln", "SALN"),
+    ),
+    "salinity": VariableDefinition(
+        id="salinity",
+        display_name="Sea Water Practical Salinity",
+        cf_standard_name="sea_water_salinity",
+        unit="PSU",
+        category="thermodynamic",
+        description="Observed or model practical salinity.",
+        valid_range=(0.0, 44.0),
+        aliases=("so", "PSAL", "saln", "SALN"),
+    ),
+    "pressure": VariableDefinition(
+        id="pressure",
+        display_name="Sea Water Pressure",
+        cf_standard_name="sea_water_pressure",
+        unit="dbar",
+        category="coordinate",
+        description="Sea water hydrostatic pressure coordinate.",
+        valid_range=(0.0, 6000.0),
+        aliases=("PRES", "pres", "depth"),
+    ),
+    "depth": VariableDefinition(
+        id="depth",
+        display_name="Depth",
+        cf_standard_name="depth",
+        unit="m",
+        category="coordinate",
+        description="Vertical depth below sea surface in meters.",
+        valid_range=(0.0, 6000.0),
+        aliases=("pressure", "PRES", "z"),
+    ),
+    "uo": VariableDefinition(
+        id="uo",
+        display_name="Eastward Sea Water Velocity (uo)",
+        cf_standard_name="eastward_sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Zonal (eastward) ocean current velocity component.",
+        valid_range=(-5.0, 5.0),
+        aliases=("currents_u", "UVEL", "u"),
+    ),
+    "currents_u": VariableDefinition(
+        id="currents_u",
+        display_name="Eastward Current Velocity (u)",
+        cf_standard_name="eastward_sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Eastward sea water velocity component.",
+        valid_range=(-5.0, 5.0),
+        aliases=("uo", "UVEL", "u"),
+    ),
+    "vo": VariableDefinition(
+        id="vo",
+        display_name="Northward Sea Water Velocity (vo)",
+        cf_standard_name="northward_sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Meridional (northward) ocean current velocity component.",
+        valid_range=(-5.0, 5.0),
+        aliases=("currents_v", "VVEL", "v"),
+    ),
+    "currents_v": VariableDefinition(
+        id="currents_v",
+        display_name="Northward Current Velocity (v)",
+        cf_standard_name="northward_sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Northward sea water velocity component.",
+        valid_range=(-5.0, 5.0),
+        aliases=("vo", "VVEL", "v"),
+    ),
+    "wo": VariableDefinition(
+        id="wo",
+        display_name="Upward Sea Water Velocity (wo)",
+        cf_standard_name="upward_sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Vertical ocean velocity component (positive upward).",
+        valid_range=(-0.1, 0.1),
+        aliases=("w", "wcur"),
+    ),
+    "zos": VariableDefinition(
+        id="zos",
+        display_name="Sea Surface Height (zos)",
+        cf_standard_name="sea_surface_height_above_geoid",
+        unit="m",
+        category="dynamic",
+        description="Sea surface height above geoid / mean sea surface.",
+        valid_range=(-3.0, 3.0),
+        aliases=("ssh", "elevation"),
+    ),
+    "mlotst": VariableDefinition(
+        id="mlotst",
+        display_name="Ocean Mixed Layer Thickness (mlotst)",
+        cf_standard_name="ocean_mixed_layer_thickness_defined_by_sigma_theta",
+        unit="m",
+        category="thermodynamic",
+        description="Ocean mixed layer thickness defined by density threshold.",
+        valid_range=(0.0, 1000.0),
+        aliases=("mld", "mixed_layer_depth"),
+    ),
+    "current_speed": VariableDefinition(
+        id="current_speed",
+        display_name="Current Speed (Derived)",
+        cf_standard_name="sea_water_speed",
+        unit="m/s",
+        category="dynamic",
+        description="Derived current magnitude: sqrt(uo^2 + vo^2). Must be computed from retrieved uo and vo.",
+        valid_range=(0.0, 7.0),
+        is_derived=True,
+        derived_expression="sqrt(uo^2 + vo^2)",
+    ),
+    "current_direction": VariableDefinition(
+        id="current_direction",
+        display_name="Current Direction (Derived)",
+        cf_standard_name="sea_water_velocity_to_direction",
+        unit="degrees",
+        category="dynamic",
+        description="Derived current flow direction in degrees clockwise from true north: (atan2(uo, vo) * 180 / pi) % 360.",
+        valid_range=(0.0, 360.0),
+        is_derived=True,
+        derived_expression="(atan2(uo, vo) * 180 / pi) % 360",
+        aliases=("direction", "current_dir", "heading"),
+    ),
+    "currents": VariableDefinition(
+        id="currents",
+        display_name="Ocean Horizontal Currents (Velocity & Flow)",
+        cf_standard_name="sea_water_velocity",
+        unit="m/s",
+        category="dynamic",
+        description="Unified ocean horizontal current vectors combining eastward (uo) and northward (vo) components with derived speed magnitude (sqrt(uo^2 + vo^2)) and flow direction.",
+        valid_range=(0.0, 7.0),
+        is_derived=True,
+        derived_expression="speed = sqrt(uo^2 + vo^2), direction = (atan2(uo, vo) * 180 / pi) % 360",
+        aliases=("current", "velocity", "flow", "CURR", "uv", "ocean_currents"),
+    ),
+    "chlorophyll": VariableDefinition(
+        id="chlorophyll",
+        display_name="Chlorophyll-a Concentration",
+        cf_standard_name="mass_concentration_of_chlorophyll_a_in_sea_water",
+        unit="mg/m³",
+        category="biogeochemical",
+        description="Chlorophyll-a mass concentration in sea water (Biogeochemical product).",
+        valid_range=(0.0, 50.0),
+        aliases=("chl", "CHL", "chlor_a"),
+    ),
+    "chl": VariableDefinition(
+        id="chl",
+        display_name="Chlorophyll-a (chl)",
+        cf_standard_name="mass_concentration_of_chlorophyll_a_in_sea_water",
+        unit="mg/m³",
+        category="biogeochemical",
+        description="Chlorophyll-a mass concentration in sea water.",
+        valid_range=(0.0, 50.0),
+        aliases=("chlorophyll", "CHL", "chlor_a"),
+    ),
+    "o2": VariableDefinition(
+        id="o2",
+        display_name="Dissolved Oxygen (o2)",
+        cf_standard_name="mole_concentration_of_dissolved_molecular_oxygen_in_sea_water",
+        unit="mmol/m³",
+        category="biogeochemical",
+        description="Dissolved oxygen concentration in sea water.",
+        valid_range=(0.0, 500.0),
+        aliases=("oxygen", "dissolved_oxygen", "DOX2"),
+    ),
+    "dissolved_oxygen": VariableDefinition(
+        id="dissolved_oxygen",
+        display_name="Dissolved Oxygen Concentration",
+        cf_standard_name="mole_concentration_of_dissolved_molecular_oxygen_in_sea_water",
+        unit="mmol/m³",
+        category="biogeochemical",
+        description="Dissolved oxygen concentration in sea water.",
+        valid_range=(0.0, 500.0),
+        aliases=("o2", "oxygen", "DOX2"),
+    ),
+    "no3": VariableDefinition(
+        id="no3",
+        display_name="Nitrate Concentration (no3)",
+        cf_standard_name="mole_concentration_of_nitrate_in_sea_water",
+        unit="mmol/m³",
+        category="biogeochemical",
+        description="Nitrate mass/mole concentration in sea water.",
+        valid_range=(0.0, 100.0),
+        aliases=("nitrate", "NITRATE", "N3N"),
+    ),
+    "nitrate": VariableDefinition(
+        id="nitrate",
+        display_name="Nitrate Concentration",
+        cf_standard_name="mole_concentration_of_nitrate_in_sea_water",
+        unit="mmol/m³",
+        category="biogeochemical",
+        description="Nitrate concentration in sea water.",
+        valid_range=(0.0, 100.0),
+        aliases=("no3", "NITRATE", "N3N"),
+    ),
+}
+
+
+def resolve_canonical_variable(var_name: Optional[str]) -> Optional[VariableDefinition]:
+    """Find the canonical VariableDefinition by ID or alias."""
+    if not var_name:
+        return None
+    var_lower = var_name.strip().lower()
+    if var_lower in VARIABLE_REGISTRY:
+        return VARIABLE_REGISTRY[var_lower]
+    for var_def in VARIABLE_REGISTRY.values():
+        if var_lower in [a.lower() for a in var_def.aliases]:
+            return var_def
+    return None
+
+
+# ── Canonical Dataset Registry ──────────────────────────────────────────────
+
+AvailabilityStatus = Literal[
+    "available",
+    "registered_access_required",
+    "upstream_unavailable",
+    "architecture_ready",
+]
+
+SourceType = Literal["observation", "model", "reanalysis", "collocation"]
+RetrievalCapability = Literal["live_api", "local_file", "gdac_index", "auth_required", "not_implemented"]
+
+
+@dataclass(frozen=True)
+class SpatialBounds:
+    south: float
+    north: float
+    west: float
+    east: float
+    region_name: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class TemporalBounds:
+    start: str  # ISO 8601 or date
+    end: str    # ISO 8601 or date or 'present'
+    resolution: str  # e.g. 'P1D-m' (daily mean), 'PT6H-i' (6-hourly instantaneous), 'event-based'
+    available_dates: Optional[tuple[str, ...]] = None
+
+
+@dataclass(frozen=True)
+class VerticalBounds:
+    min_depth: float
+    max_depth: float
+    unit: str = "m"  # or 'dbar'
+    standard_levels: Optional[tuple[float, ...]] = None
+
+
+@dataclass(frozen=True)
+class DatasetDefinition:
+    dataset_id: str
+    dataset_name: str
+    product_id: str
+    product_name: str
+    source_id: str
+    source_name: str
+    source_type: SourceType
+    description: str
+    supported_variables: tuple[str, ...]  # Canonical variable IDs
+    variable_units: dict[str, str]
+    spatial_coverage: SpatialBounds
+    temporal_coverage: TemporalBounds
+    vertical_coverage: VerticalBounds
+    availability_status: AvailabilityStatus
+    retrieval_capability: RetrievalCapability
+    processing_level: str
+    quality_control_applied: bool
+    data_mode: str = "HISTORICAL_RESEARCH"  # "LIVE_NRT" or "HISTORICAL_RESEARCH"
+    platform_type: Optional[str] = None     # "ARGO", "GLIDER", "CTD", "BGC", or None for model
+    vertical_coverage_type: str = "depth_resolved"  # "depth_resolved" or "surface_only"
+    supports_3d: bool = True
+    supports_surface: bool = True
+    supports_subset: bool = True
+    credential_requirement: str = "none"
+    qc_details: Optional[str] = None
+    documentation_url: Optional[str] = None
+    citation: Optional[str] = None
+    adapter_name: str = "base"
+    adapter_notes: Optional[str] = None
+
+
+DATASET_REGISTRY: dict[str, DatasetDefinition] = {
+    # ── 1. Copernicus Global Physical Analysis & Forecast (Operational Model) ──
+    "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Physics Potential Temperature (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D potential temperature (thetao) on 1/12° grid (approx 8km) from NEMO ocean model.",
+        supported_variables=("thetao", "temperature"),
+        variable_units={"thetao": "°C", "temperature": "°C"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+        adapter_notes="Official Copernicus Marine toolbox retrieval enabled.",
+    ),
+    "cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i",
+        dataset_name="Copernicus Global Ocean Physics Potential Temperature (6-Hourly Instantaneous)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official 6-hourly instantaneous 3D potential temperature (thetao) on 1/12° grid.",
+        supported_variables=("thetao", "temperature"),
+        variable_units={"thetao": "°C", "temperature": "°C"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="PT6H-i"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Physics Salinity (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D practical salinity (so) on 1/12° grid from NEMO ocean model.",
+        supported_variables=("so", "salinity"),
+        variable_units={"so": "PSU", "salinity": "PSU"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i",
+        dataset_name="Copernicus Global Ocean Physics Salinity (6-Hourly Instantaneous)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official 6-hourly instantaneous 3D practical salinity (so) on 1/12° grid.",
+        supported_variables=("so", "salinity"),
+        variable_units={"so": "PSU", "salinity": "PSU"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="PT6H-i"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Physics Horizontal Currents (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D horizontal velocity components (uo, vo) on 1/12° grid with derived speed and direction.",
+        supported_variables=("uo", "vo", "currents_u", "currents_v", "current_speed", "current_direction"),
+        variable_units={"uo": "m/s", "vo": "m/s", "currents_u": "m/s", "currents_v": "m/s", "current_speed": "m/s", "current_direction": "degrees"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i",
+        dataset_name="Copernicus Global Ocean Physics Horizontal Currents (6-Hourly Instantaneous)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official 6-hourly instantaneous 3D horizontal velocity components (uo, vo) on 1/12° grid.",
+        supported_variables=("uo", "vo", "currents_u", "currents_v", "current_speed", "current_direction"),
+        variable_units={"uo": "m/s", "vo": "m/s", "currents_u": "m/s", "currents_v": "m/s", "current_speed": "m/s", "current_direction": "degrees"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="PT6H-i"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy-wcur_anfc_0.083deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy-wcur_anfc_0.083deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Physics Upward Velocity (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D vertical ocean velocity (wo) on 1/12° grid.",
+        supported_variables=("wo",),
+        variable_units={"wo": "m/s"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_phy_anfc_0.083deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_phy_anfc_0.083deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Physics 2D & Surface Fields (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        product_name="Global Ocean Physics Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 2D ocean physics fields including Sea Surface Height (zos) and Mixed Layer Thickness (mlotst) on 1/12° grid.",
+        supported_variables=("zos", "mlotst"),
+        variable_units={"zos": "m", "mlotst": "m"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=0.0, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=False,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-024.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_PHY_001_024",
+        adapter_name="copernicus",
+    ),
+
+    # ── Copernicus Global Ocean Biogeochemical Analysis & Forecast ───────────
+    "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Biogeochemistry Plankton & Chlorophyll (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        product_name="Global Ocean Biogeochemistry Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D chlorophyll-a mass concentration (chl) and phytoplankton carbon (phyc) on 1/4° grid from PISCES biogeochemical model.",
+        supported_variables=("chl", "chlorophyll"),
+        variable_units={"chl": "mg/m³", "chlorophyll": "mg/m³"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Biogeochemical Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-028.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_bgc-bio_anfc_0.25deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_bgc-bio_anfc_0.25deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Biogeochemistry Dissolved Oxygen & Production (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        product_name="Global Ocean Biogeochemistry Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D dissolved molecular oxygen (o2) and net primary production (nppv) on 1/4° grid from PISCES model.",
+        supported_variables=("o2", "dissolved_oxygen"),
+        variable_units={"o2": "mmol/m³", "dissolved_oxygen": "mmol/m³"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Biogeochemical Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-028.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        adapter_name="copernicus",
+    ),
+    "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m": DatasetDefinition(
+        dataset_id="cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m",
+        dataset_name="Copernicus Global Ocean Biogeochemistry Nutrients / Nitrate (Daily Mean)",
+        product_id="GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        product_name="Global Ocean Biogeochemistry Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="model",
+        description="Official daily mean 3D nitrate (no3), phosphate (po4), silicate (si), and iron (fe) on 1/4° grid from PISCES model.",
+        supported_variables=("no3", "nitrate"),
+        variable_units={"no3": "mmol/m³", "nitrate": "mmol/m³"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-11-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=5727.9, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Biogeochemical Analysis/Forecast",
+        quality_control_applied=False,
+        supports_3d=True,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-028.pdf",
+        citation="E.U. Copernicus Marine Service Information: GLOBAL_ANALYSISFORECAST_BGC_001_028",
+        adapter_name="copernicus",
+    ),
+
+    # ── 2. GLORYS12V1 × Argo Collocation (Research Benchmark Reanalysis) ─────────
+    "glorys12v1-argo-collocation-bob": DatasetDefinition(
+        dataset_id="glorys12v1-argo-collocation-bob",
+        dataset_name="GLORYS12V1 × Argo Delayed Mode Collocation (Bay of Bengal)",
+        product_id="cmems_mod_glo_phy_my_0.083deg_P1D-m",
+        product_name="Global Ocean Physics Reanalysis GLORYS12V1",
+        source_id="glorys12v1",
+        source_name="Mercator Ocean / Copernicus Marine",
+        source_type="collocation",
+        description="Precomputed scientific collocation pairs comparing GLORYS12V1 reanalysis with in-situ Argo Delayed Mode profiles in the Bay of Bengal (Jan 1–14, 2024, 0–500 dbar). Difference convention: GLORYS - Argo.",
+        supported_variables=("temperature", "salinity", "thetao", "so", "pressure"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "thetao": "°C", "so": "PSU", "pressure": "dbar"},
+        spatial_coverage=SpatialBounds(south=7.80, north=15.52, west=83.47, east=90.26, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(
+            start="2024-01-01",
+            end="2024-01-14",
+            resolution="event-based",
+            available_dates=(
+                "2024-01-01", "2024-01-04", "2024-01-06", "2024-01-07",
+                "2024-01-08", "2024-01-09", "2024-01-10", "2024-01-11",
+                "2024-01-14",
+            ),
+        ),
+        vertical_coverage=VerticalBounds(min_depth=0.5, max_depth=500.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="Scientific Collocation Benchmark",
+        quality_control_applied=True,
+        qc_details="Argo Delayed Mode QC applied; GLORYS collocated in space, depth, and time.",
+        citation="GLORYS12V1 Reanalysis / Argo Delayed Mode. CMEMS & GDAC.",
+        adapter_name="glorys",
+    ),
+
+    # ── 3. Argo Delayed Mode In-Situ Observations (Historical) ──────────────────
+    "argo-delayed-mode-bob-2024": DatasetDefinition(
+        dataset_id="argo-delayed-mode-bob-2024",
+        dataset_name="Argo Delayed Mode Profiles (Bay of Bengal Jan 2024)",
+        product_id="argo_global_delayed_mode",
+        product_name="Argo Global Data Assembly Centre Delayed Mode",
+        source_id="argo-gdac",
+        source_name="Argo Global Data Assembly Centre (GDAC)",
+        source_type="observation",
+        description="Official Argo Delayed Mode vertical CTD profiles in the Bay of Bengal from Jan 1–14, 2024 with verified quality control flags.",
+        supported_variables=("temperature", "salinity", "pressure"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "pressure": "dbar"},
+        spatial_coverage=SpatialBounds(south=7.80, north=15.52, west=83.47, east=90.26, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(
+            start="2024-01-01",
+            end="2024-01-14",
+            resolution="event-based",
+            available_dates=(
+                "2024-01-01", "2024-01-04", "2024-01-06", "2024-01-07",
+                "2024-01-08", "2024-01-09", "2024-01-10", "2024-01-11",
+                "2024-01-14",
+            ),
+        ),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=500.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="L3 Delayed Mode In-Situ",
+        quality_control_applied=True,
+        qc_details="PRES_QC, TEMP_QC, PSAL_QC flags 1 (good) and 2 (probably good) validated.",
+        citation="Argo (2024). Argo float data and metadata from Global Data Assembly Centre. Ifremer.",
+        adapter_name="argo",
+    ),
+
+    # ── 4. Argo GDAC Latest Available Synthetic Profiles (Live Stream) ──────────
+    "argo-gdac-latest-synthetic": DatasetDefinition(
+        dataset_id="argo-gdac-latest-synthetic",
+        dataset_name="Argo GDAC Latest Synthetic Profiles (On-Demand Upstream)",
+        product_id="argo_synthetic_profile_index",
+        product_name="Argo Global Real-Time & Adjusted In-Situ Stream",
+        source_id="argo-gdac",
+        source_name="Argo Global Data Assembly Centre (GDAC)",
+        source_type="observation",
+        description="On-demand live querying of official Argo GDAC synthetic profile index and direct profile NetCDF fetching with strict QC 1/2 filtering.",
+        supported_variables=("temperature", "salinity", "pressure"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "pressure": "dbar"},
+        spatial_coverage=SpatialBounds(south=5.0, north=22.0, west=80.0, east=95.0, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(start="dynamic_last_90_days", end="present", resolution="event-based"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=500.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="gdac_index",
+        processing_level="L2 Real-Time / L3 Adjusted In-Situ",
+        quality_control_applied=True,
+        qc_details="Per-level PRES/TEMP/PSAL QC 1/2 enforced. Raw/Adjusted data mode respected.",
+        documentation_url="https://data-argo.ifremer.fr",
+        citation="Argo GDAC real-time synthetic profile stream.",
+        adapter_name="argo",
+    ),
+
+    # ── 5. INCOIS HYCOM Operational Regional Model (Pipeline B) ─────────────────
+    "incois-hycom-2.35-operational": DatasetDefinition(
+        dataset_id="incois-hycom-2.35-operational",
+        dataset_name="INCOIS Regional HYCOM 2.35 Operational Forecast",
+        product_id="incois_hycom_regional",
+        product_name="INCOIS Indian Ocean Regional HYCOM",
+        source_id="incois-hycom",
+        source_name="Indian National Centre for Ocean Information Services (INCOIS)",
+        source_type="model",
+        description="Operational regional HYCOM model output for Indian Ocean / Bay of Bengal covering Aug 26 – Sep 01, 2026 at 6-hourly intervals on standard depth levels (0, 17.5, 52.5, 125, 275, 500 m). Separate from Research Mode.",
+        supported_variables=("temperature", "salinity", "currents_u", "currents_v", "uo", "vo", "current_speed", "current_direction"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "currents_u": "m/s", "currents_v": "m/s", "uo": "m/s", "vo": "m/s", "current_speed": "m/s", "current_direction": "degrees"},
+        spatial_coverage=SpatialBounds(south=5.063, north=21.943, west=78.02, east=99.86, region_name="North Indian Ocean / BOB"),
+        temporal_coverage=TemporalBounds(start="2026-08-26T06:00:00Z", end="2026-09-01T00:00:00Z", resolution="6-hourly"),
+        vertical_coverage=VerticalBounds(
+            min_depth=0.0,
+            max_depth=500.0,
+            unit="m",
+            standard_levels=(0.0, 17.5, 52.5, 125.0, 275.0, 500.0),
+        ),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="Operational Regional Forecast",
+        quality_control_applied=False,
+        data_mode="HISTORICAL_RESEARCH",
+        platform_type=None,
+        vertical_coverage_type="depth_resolved",
+        citation="INCOIS HYCOM operational run RSMC_hycom_20260827.nc",
+        adapter_name="hycom",
+    ),
+
+    # ── 6. Copernicus Global Ocean Colour NRT Satellite Chlorophyll (Surface-Only) ──
+    "cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D": DatasetDefinition(
+        dataset_id="cmems_obs-oc_glo_bgc-plankton_nrt_l4-gapfree-multi-4km_P1D",
+        dataset_name="Copernicus Global Ocean Colour Satellite Surface Chlorophyll-a (Daily 4km L4)",
+        product_id="OCEANCOLOUR_GLO_BGC_L4_NRT_009_102",
+        product_name="Global Ocean Colour Analysis and Forecast",
+        source_id="copernicus-marine",
+        source_name="Copernicus Marine Service (CMEMS)",
+        source_type="observation",
+        description="Daily gap-free multi-sensor satellite observation of surface Chlorophyll-a mass concentration (CHL) on 4km grid. Surface-only product (depth = 0 m).",
+        supported_variables=("chl", "chlorophyll"),
+        variable_units={"chl": "mg/m³", "chlorophyll": "mg/m³"},
+        spatial_coverage=SpatialBounds(south=-80.0, north=90.0, west=-180.0, east=180.0, region_name="Global"),
+        temporal_coverage=TemporalBounds(start="2021-01-01", end="present", resolution="P1D-m"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=0.0, unit="m"),
+        availability_status="available",
+        retrieval_capability="live_api",
+        processing_level="L4 Satellite Observation (Surface-Only)",
+        quality_control_applied=True,
+        data_mode="LIVE_NRT",
+        platform_type="BGC",
+        vertical_coverage_type="surface_only",
+        supports_3d=False,
+        supports_surface=True,
+        supports_subset=True,
+        credential_requirement="Copernicus Marine Service Account",
+        documentation_url="https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-OC-PUM-009-ALL.pdf",
+        citation="E.U. Copernicus Marine Service: OCEANCOLOUR_GLO_BGC_L4_NRT_009_102",
+        adapter_name="copernicus",
+        adapter_notes="Surface-only field; not rendered as full-depth 3D profile.",
+    ),
+
+    # ── 7. Ocean Glider Historical In-Situ Profiles (Bay of Bengal) ──────────────
+    "glider-incois-bob-historical": DatasetDefinition(
+        dataset_id="glider-incois-bob-historical",
+        dataset_name="Autonomous Ocean Glider CTD/BGC Transects (Bay of Bengal)",
+        product_id="ocean_gliders_incois_bob",
+        product_name="OceanGliders International & Regional Network",
+        source_id="ocean-gliders",
+        source_name="OceanGliders / INCOIS National Glider Facility",
+        source_type="observation",
+        description="High-resolution saw-tooth transects from autonomous ocean gliders measuring temperature, salinity, and bio-optical variables in the Bay of Bengal.",
+        supported_variables=("temperature", "salinity", "chl", "pressure", "thetao", "so"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "chl": "mg/m³", "pressure": "dbar", "thetao": "°C", "so": "PSU"},
+        spatial_coverage=SpatialBounds(south=8.0, north=19.5, west=82.0, east=92.5, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(start="2023-01-01", end="2024-12-31", resolution="event-based"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=1000.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="L2/L3 OceanGlider In-Situ",
+        quality_control_applied=True,
+        data_mode="HISTORICAL_RESEARCH",
+        platform_type="GLIDER",
+        vertical_coverage_type="depth_resolved",
+        supports_3d=True,
+        supports_surface=True,
+        qc_details="OceanGliders Standard Operating Procedure QC applied.",
+        citation="OceanGliders (2024). Bay of Bengal glider mission observations.",
+        adapter_name="glider",
+    ),
+
+    # ── 8. Shipboard CTD Hydrographic Casts (Bay of Bengal Research Cruises) ──────
+    "ctd-cchdo-bob-historical": DatasetDefinition(
+        dataset_id="ctd-cchdo-bob-historical",
+        dataset_name="Research Cruise Shipboard CTD Casts (Bay of Bengal)",
+        product_id="cchdo_hydrographic_cruises",
+        product_name="CLIVAR & Carbon Hydrographic Data Office (CCHDO)",
+        source_id="cchdo-ctd",
+        source_name="CCHDO / WOCE Hydrographic Programme",
+        source_type="observation",
+        description="High-precision shipboard CTD rosette station profiles collecting depth-resolved temperature, salinity, dissolved oxygen, and nutrients in the Bay of Bengal.",
+        supported_variables=("temperature", "salinity", "pressure", "o2", "no3", "chl", "thetao", "so"),
+        variable_units={"temperature": "°C", "salinity": "PSU", "pressure": "dbar", "o2": "mmol/m³", "no3": "mmol/m³", "chl": "mg/m³", "thetao": "°C", "so": "PSU"},
+        spatial_coverage=SpatialBounds(south=6.0, north=21.0, west=80.0, east=94.0, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(start="2020-01-01", end="2024-06-30", resolution="station-based"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=4500.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="WOCE/GO-SHIP Quality Controlled Hydrographic Data",
+        quality_control_applied=True,
+        data_mode="HISTORICAL_RESEARCH",
+        platform_type="CTD",
+        vertical_coverage_type="depth_resolved",
+        supports_3d=True,
+        supports_surface=True,
+        qc_details="WOCE/GO-SHIP 2: Good, 3: Questionable QC standard applied.",
+        citation="CCHDO Cruise CTD Observations, Bay of Bengal.",
+        adapter_name="ctd",
+    ),
+
+    # ── 9. Biogeochemical In-Situ Observations (BGC-Argo Profiles) ───────────────
+    "bgc-argo-bob-historical": DatasetDefinition(
+        dataset_id="bgc-argo-bob-historical",
+        dataset_name="BGC-Argo Float Profiles (Bay of Bengal)",
+        product_id="bgc_argo_global",
+        product_name="Biogeochemical Argo Global Data Assembly Centre",
+        source_id="argo-gdac",
+        source_name="BGC-Argo / Ifremer GDAC",
+        source_type="observation",
+        description="In-situ biogeochemical vertical profiles from BGC-Argo profilers measuring chlorophyll-a fluorescence, dissolved oxygen, and nitrate in the Bay of Bengal.",
+        supported_variables=("chl", "o2", "no3", "chlorophyll", "dissolved_oxygen", "nitrate", "temperature", "salinity", "pressure"),
+        variable_units={"chl": "mg/m³", "o2": "mmol/m³", "no3": "mmol/m³", "chlorophyll": "mg/m³", "dissolved_oxygen": "mmol/m³", "nitrate": "mmol/m³", "temperature": "°C", "salinity": "PSU", "pressure": "dbar"},
+        spatial_coverage=SpatialBounds(south=7.0, north=18.0, west=82.0, east=93.0, region_name="Bay of Bengal"),
+        temporal_coverage=TemporalBounds(start="2023-01-01", end="2024-12-31", resolution="event-based"),
+        vertical_coverage=VerticalBounds(min_depth=0.0, max_depth=1000.0, unit="dbar"),
+        availability_status="available",
+        retrieval_capability="local_file",
+        processing_level="L3 Quality Controlled BGC-Argo",
+        quality_control_applied=True,
+        data_mode="HISTORICAL_RESEARCH",
+        platform_type="BGC",
+        vertical_coverage_type="depth_resolved",
+        supports_3d=True,
+        supports_surface=True,
+        qc_details="BGC-Argo QF 1/2 validated.",
+        citation="BGC-Argo Global Data Assembly Centre (2024).",
+        adapter_name="bgc",
+    ),
+}
+
+
+# ── Canonical Platform & Data Mode Registries ────────────────────────────────
+
+PLATFORM_REGISTRY: dict[str, dict[str, Any]] = {
+    "ARGO": {
+        "platform_type": "ARGO",
+        "display_name": "Argo Profiling Floats",
+        "description": "Autonomous profiling floats measuring temperature and salinity from surface to 2000 dbar (current research focus 0–500 dbar).",
+        "data_modes_supported": ["LIVE_NRT", "HISTORICAL_RESEARCH"],
+        "typical_variables": ["temperature", "salinity", "pressure"],
+        "typical_vertical_range": (0.0, 2000.0),
+        "vertical_coverage_type": "depth_resolved",
+        "qc_conventions": ["Argo GDAC Real-Time QC", "Argo Delayed Mode QC (flags 1 & 2)"],
+        "status": "active",
+        "status_note": "Operational GDAC index stream and Jan 2024 Delayed Mode benchmark available.",
+    },
+    "GLIDER": {
+        "platform_type": "GLIDER",
+        "display_name": "Ocean Autonomous Gliders",
+        "description": "Autonomous underwater gliders performing high-resolution saw-tooth transects measuring physics and bio-optics.",
+        "data_modes_supported": ["HISTORICAL_RESEARCH"],
+        "typical_variables": ["temperature", "salinity", "chl", "pressure"],
+        "typical_vertical_range": (0.0, 1000.0),
+        "vertical_coverage_type": "depth_resolved",
+        "qc_conventions": ["OceanGliders SOP QC", "EGO Standard Flags"],
+        "status": "ready_historical",
+        "status_note": "Historical glider mission registry configured. NRT glider stream is not active for the configured region.",
+    },
+    "CTD": {
+        "platform_type": "CTD",
+        "display_name": "Shipboard CTD Casts",
+        "description": "High-precision conductivity-temperature-depth rosette casts collected during research cruises.",
+        "data_modes_supported": ["HISTORICAL_RESEARCH"],
+        "typical_variables": ["temperature", "salinity", "pressure", "o2", "chl", "no3"],
+        "typical_vertical_range": (0.0, 6000.0),
+        "vertical_coverage_type": "depth_resolved",
+        "qc_conventions": ["WOCE/CCHDO Hydrographic QC Standards"],
+        "status": "ready_historical",
+        "status_note": "Research cruise hydrographic casts supported in historical mode.",
+    },
+    "BGC": {
+        "platform_type": "BGC",
+        "display_name": "Biogeochemical Sensors & Profiles",
+        "description": "Biogeochemical observations including in-situ BGC-Argo floats and validated Copernicus PISCES biogeochemical models.",
+        "data_modes_supported": ["LIVE_NRT", "HISTORICAL_RESEARCH"],
+        "typical_variables": ["chl", "o2", "no3"],
+        "typical_vertical_range": (0.0, 2000.0),
+        "vertical_coverage_type": "depth_resolved",
+        "qc_conventions": ["BGC-Argo Quality Control Manual"],
+        "status": "active",
+        "status_note": "Copernicus PISCES 3D BGC operational model and BGC sensor integrations active.",
+    },
+}
+
+DATA_MODE_REGISTRY: dict[str, dict[str, Any]] = {
+    "LIVE_NRT": {
+        "mode": "LIVE_NRT",
+        "display_name": "Live / Near-Real-Time (NRT)",
+        "description": "Upstream operational streams, recent Argo GDAC profiling floats, and Copernicus Marine operational daily/6-hourly forecasts.",
+        "refresh_frequency": "Continuous / 5-minute automated GDAC check",
+        "sources": ["Argo GDAC Real-Time Index", "Copernicus Marine Analysis & Forecast (PHY_001_024, BGC_001_028)"],
+    },
+    "HISTORICAL_RESEARCH": {
+        "mode": "HISTORICAL_RESEARCH",
+        "display_name": "Research / Historical Benchmark",
+        "description": "Verified delayed-mode observations, GLORYS12V1 ocean reanalysis collocations, and peer-reviewed benchmark datasets.",
+        "refresh_frequency": "Static / Benchmark verified",
+        "sources": ["GLORYS12V1 Reanalysis", "Argo Delayed Mode (Ifremer)", "INCOIS Regional Models"],
+    },
+}
+
+
+# ── Registry Lookup and Validation Helpers ───────────────────────────────────
+
+def get_dataset(dataset_id: str) -> Optional[DatasetDefinition]:
+    """Retrieve a dataset definition by ID."""
+    return DATASET_REGISTRY.get(dataset_id)
+
+
+def list_datasets(
+    source_id: Optional[str] = None,
+    variable: Optional[str] = None,
+    data_mode: Optional[str] = None,
+    platform_type: Optional[str] = None,
+    vertical_coverage_type: Optional[str] = None,
+    status: Optional[AvailabilityStatus] = None,
+) -> list[DatasetDefinition]:
+    """Filter registered datasets by source, variable, data mode, platform, or status."""
+    results: list[DatasetDefinition] = []
+    canonical_var = resolve_canonical_variable(variable).id if variable else None
+
+    for ds in DATASET_REGISTRY.values():
+        if source_id and ds.source_id != source_id:
+            continue
+        if data_mode and ds.data_mode != data_mode:
+            continue
+        if platform_type and ds.platform_type != platform_type:
+            continue
+        if vertical_coverage_type and ds.vertical_coverage_type != vertical_coverage_type:
+            continue
+        if status and ds.availability_status != status:
+            continue
+        if canonical_var:
+            supported_canonical = [
+                resolve_canonical_variable(v).id
+                for v in ds.supported_variables
+                if resolve_canonical_variable(v) is not None
+            ]
+            if canonical_var not in supported_canonical:
+                continue
+        results.append(ds)
+    return results
+
+
+def validate_variable_for_dataset(dataset_id: str, variable: str) -> tuple[bool, Optional[str]]:
+    """
+    Validate that the given variable is scientifically supported by the dataset.
+    Returns (is_valid, error_message).
+    """
+    ds = get_dataset(dataset_id)
+    if not ds:
+        return False, f"Unknown dataset_id '{dataset_id}'."
+
+    var_def = resolve_canonical_variable(variable)
+    if not var_def:
+        return False, f"Unknown scientific variable '{variable}'."
+
+    # Check if variable or any of its aliases match supported variables
+    supported_canonical_ids = {
+        resolve_canonical_variable(v).id
+        for v in ds.supported_variables
+        if resolve_canonical_variable(v) is not None
+    }
+
+    if var_def.id not in supported_canonical_ids:
+        supported_str = ", ".join(sorted(supported_canonical_ids))
+        return (
+            False,
+            f"Variable '{variable}' is not supported by dataset '{dataset_id}'. Supported variables: {supported_str}.",
+        )
+
+    return True, None
+
+
+def resolve_scientific_reference_model(
+    platform: Optional[str],
+    variable: Optional[str],
+    data_mode: Optional[str] = "HISTORICAL_RESEARCH",
+) -> dict[str, Any]:
+    """
+    Authoritative scientific mapping from (Platform, Variable, DataMode) to the
+    exact compatible ocean model / reanalysis dataset.
+
+    SCIENTIFIC GROUND TRUTH:
+    - Temperature & Salinity ALWAYS compare against GLORYS12V1 (physics reanalysis),
+      NEVER against CMEMS BGC even when observation platform is named BGC-Argo.
+    - Chlorophyll-a, Dissolved Oxygen, and Nitrate compare against CMEMS Global BGC (PISCES).
+    - Current velocities compare against HYCOM / hydrodynamic velocity model.
+    - Core Argo floats have NO biogeochemical sensors (no chlorophyll, oxygen, nitrate).
+    - Gliders do not measure ADCP current velocities (no synthetic u/v currents).
+    """
+    plat_key = (platform or "ARGO").upper()
+    var_raw = (variable or "temperature").lower()
+    var_def = resolve_canonical_variable(var_raw)
+    var_id = var_def.id if var_def else var_raw
+
+    # Classify variable category
+    category = "thermodynamic"
+    if var_id in ("chl", "chlorophyll", "o2", "dissolved_oxygen", "no3", "nitrate", "po4", "si", "fe", "ph", "spco2"):
+        category = "biogeochemical"
+    elif var_id in ("uo", "vo", "wo", "currents", "currents_u", "currents_v", "current_speed", "current_direction"):
+        category = "dynamic"
+    elif var_id in ("zos", "mlotst"):
+        category = "surface"
+
+    is_live = (data_mode == "LIVE_NRT")
+
+    if category == "thermodynamic":
+        # Thermodynamic properties (temp, sal) MUST compare against GLORYS (historical) or Copernicus PHY (live)
+        if is_live:
+            return {
+                "platform": plat_key,
+                "variable": var_id,
+                "variable_category": category,
+                "model_key": "COPERNICUS_NRT_PHY",
+                "model_dataset_id": "GLOBAL_ANALYSISFORECAST_PHY_001_024",
+                "model_source_name": "Copernicus Marine Operational Model",
+                "model_display_name": "Copernicus Marine Global Ocean Physics Analysis & Forecast (0.083°)",
+                "model_short_name": "Copernicus PHY",
+                "model_variable": "thetao" if "temp" in var_id else "so",
+                "units": "°C" if "temp" in var_id else "PSU",
+                "difference_convention": "Model − Observation",
+                "is_compatible": True,
+            }
+        else:
+            return {
+                "platform": plat_key,
+                "variable": var_id,
+                "variable_category": category,
+                "model_key": "GLORYS",
+                "model_dataset_id": "glorys12v1-argo-collocation-bob",
+                "model_source_name": "GLORYS12V1 Ocean Physics Reanalysis",
+                "model_display_name": "GLORYS12V1 Global Ocean Physics Reanalysis",
+                "model_short_name": "GLORYS12V1",
+                "model_variable": "thetao" if "temp" in var_id else "so",
+                "units": "°C" if "temp" in var_id else "PSU",
+                "difference_convention": "Model − Observation",
+                "is_compatible": True,
+            }
+
+    elif category == "biogeochemical":
+        if plat_key == "ARGO":
+            return {
+                "platform": plat_key,
+                "variable": var_id,
+                "variable_category": category,
+                "model_key": "CMEMS_BGC",
+                "model_dataset_id": "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m",
+                "model_source_name": "CMEMS Global BGC Analysis (PISCES)",
+                "model_display_name": "CMEMS Global Ocean Biogeochemistry Analysis/Forecast (PISCES)",
+                "model_short_name": "CMEMS BGC PISCES",
+                "model_variable": var_id,
+                "units": "mg/m³" if var_id in ("chl", "chlorophyll") else "mmol/m³",
+                "difference_convention": "Model − Observation",
+                "is_compatible": False,
+                "rejection_reason": "Core Argo profiling floats measure physical hydrography only and do not carry biogeochemical sensors.",
+            }
+        if is_live:
+            return {
+                "platform": plat_key,
+                "variable": var_id,
+                "variable_category": category,
+                "model_key": "COPERNICUS_NRT_BGC",
+                "model_dataset_id": "GLOBAL_ANALYSISFORECAST_BGC_001_028",
+                "model_source_name": "Copernicus Marine Operational BGC",
+                "model_display_name": "Copernicus Marine Global Ocean Biogeochemistry Forecast (0.25° PISCES)",
+                "model_short_name": "Copernicus BGC",
+                "model_variable": var_id,
+                "units": "mg/m³" if var_id in ("chl", "chlorophyll") else "mmol/m³",
+                "difference_convention": "Model − Observation",
+                "is_compatible": True,
+            }
+        else:
+            return {
+                "platform": plat_key,
+                "variable": var_id,
+                "variable_category": category,
+                "model_key": "CMEMS_BGC",
+                "model_dataset_id": "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m",
+                "model_source_name": "CMEMS Global BGC Analysis (PISCES)",
+                "model_display_name": "CMEMS Global Ocean Biogeochemistry Analysis/Forecast (PISCES)",
+                "model_short_name": "CMEMS BGC PISCES",
+                "model_variable": var_id,
+                "units": "mg/m³" if var_id in ("chl", "chlorophyll") else "mmol/m³",
+                "difference_convention": "Model − Observation",
+                "is_compatible": True,
+            }
+
+    elif category == "dynamic":
+        return {
+            "platform": plat_key,
+            "variable": var_id,
+            "variable_category": category,
+            "model_key": "HYCOM",
+            "model_dataset_id": "incois-hycom-2.35-operational",
+            "model_source_name": "INCOIS Regional HYCOM 2.35 Operational Current Velocity",
+            "model_display_name": "INCOIS Regional HYCOM 2.35 Operational Current Velocity",
+            "model_short_name": "HYCOM",
+            "model_variable": "currents",
+            "units": "m/s",
+            "difference_convention": "Model − Observation",
+            "is_compatible": False,
+            "rejection_reason": f"Observation platform '{plat_key}' does not measure ocean current velocity vectors. Operational model currents shown independently.",
+        }
+
+    else:
+        return {
+            "platform": plat_key,
+            "variable": var_id,
+            "variable_category": "surface",
+            "model_key": "COPERNICUS_NRT_PHY",
+            "model_dataset_id": "GLOBAL_ANALYSISFORECAST_PHY_001_024",
+            "model_source_name": "Copernicus Marine Operational Model",
+            "model_display_name": "Copernicus Marine Global Ocean Physics Analysis & Forecast (0.083°)",
+            "model_short_name": "Copernicus SURF",
+            "model_variable": var_id,
+            "units": "m",
+            "difference_convention": "Model − Observation",
+            "is_compatible": True,
+        }

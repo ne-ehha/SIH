@@ -86,7 +86,7 @@ export function LoginScreen() {
           </label>
           {error && (
             <p className="rounded-lg border border-rose-300/15 bg-rose-400/5 px-3 py-2 text-sm text-rose-200" role="alert">
-              <span className="block font-medium">{error === 'invalid' ? 'Unable to sign in' : 'Unable to reach OceanScope'}</span>
+              <span className="block font-medium">{error === 'invalid' ? 'Unable to sign in' : 'Unable to reach ViaDariya'}</span>
               {error === 'invalid' ? 'Check your username and password and try again.' : 'Please try again in a moment.'}
             </p>
           )}
@@ -111,7 +111,7 @@ function OceanTransition({ phase }: { phase: Exclude<ScreenPhase, 'form'> }) {
       <div className="relative z-10 flex min-h-screen items-center justify-center px-5 text-center">
         {welcome ? (
           <div className="login-welcome login-transition-content">
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome to OceanScope</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome to ViaDariya</h1>
             <p className="mt-3 text-lg text-cyan-100">Chaos to Clarity</p>
             <p className="mt-5 text-sm text-slate-300">Your workspace is ready.</p>
           </div>
@@ -130,5 +130,5 @@ function OceanTransition({ phase }: { phase: Exclude<ScreenPhase, 'form'> }) {
 }
 
 function ProductFooter() {
-  return <footer className="login-footer">© 2026 OceanScope · Ocean Model Validation</footer>;
+  return <footer className="login-footer">© 2026 ViaDariya · Ocean Model Validation</footer>;
 }

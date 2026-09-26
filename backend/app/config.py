@@ -16,8 +16,10 @@ ARGO_INDEX_FILE = PROJECT_ROOT / "argo_dm_BOB_index.csv"
 
 # ── API configuration ────────────────────────────────────────────────────────
 
-API_HOST = "0.0.0.0"
-API_PORT = 8000
+import os
+
+API_HOST = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("API_PORT", "8005"))
 API_PREFIX = "/api/v1"
 
 # ── HYCOM dataset constants (verified from actual data) ─────────────────────

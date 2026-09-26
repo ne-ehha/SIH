@@ -26,7 +26,24 @@ export interface Bounds {
   west: number;
 }
 
-export type OceanVariable = 'temperature' | 'salinity' | 'currents_u' | 'currents_v';
+export type OceanVariable =
+  | 'temperature'
+  | 'salinity'
+  | 'currents'
+  | 'currents_u'
+  | 'currents_v'
+  | 'uo'
+  | 'vo'
+  | 'current_speed'
+  | 'current_direction'
+  | 'thetao'
+  | 'so'
+  | 'chl'
+  | 'chlorophyll'
+  | 'o2'
+  | 'no3'
+  | 'zos'
+  | 'mlotst';
 
 // ── Provider response wrapper ──────────────────────────────────────────────────
 

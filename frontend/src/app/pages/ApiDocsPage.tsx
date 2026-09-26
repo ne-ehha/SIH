@@ -204,7 +204,7 @@ export function ApiDocsPage() {
         <>
           <SectionCard title="API metadata" className="mb-5">
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
-              <MetaCell label="Title" value={schema.info?.title ?? 'OceanScope API'} />
+              <MetaCell label="Title" value={schema.info?.title ?? 'ViaDariya API'} />
               <MetaCell label="OpenAPI version" value={schema.openapi ?? '—'} mono />
               <MetaCell label="API version" value={schema.info?.version ?? '—'} mono />
             </div>

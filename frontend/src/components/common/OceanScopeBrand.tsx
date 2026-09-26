@@ -20,7 +20,7 @@ export function OceanScopeLogo({ variant = 'full', className }: OceanScopeLogoPr
       className={className}
       viewBox={`0 0 ${width} 62`}
       role="img"
-      aria-label="OceanScope"
+      aria-label="ViaDariya"
       xmlns="http://www.w3.org/2000/svg"
     >
       <g aria-hidden="true">
@@ -35,7 +35,7 @@ export function OceanScopeLogo({ variant = 'full', className }: OceanScopeLogoPr
       {showWordmark && (
         <g>
           <text x="72" y="31" fill="#f1f5f9" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="22" fontWeight="650" letterSpacing="-0.7">
-            OceanScope
+            ViaDariya
           </text>
           {showTagline && (
             <text x="73" y="46" fill="#8eb8c5" fontFamily="Inter, ui-sans-serif, system-ui, sans-serif" fontSize="8.5" fontWeight="600" letterSpacing="2.1">

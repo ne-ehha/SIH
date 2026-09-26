@@ -18,7 +18,7 @@ const PRIMARY_WORKSPACES = [
 const SUPPORTING_WORKSPACES = [
   ['reports', '/reports', 'Research Reports', 'Scientific summaries and available exports.'],
   ['data-services', '/data-services', 'Data Services', 'Configured datasets, provenance, and scope.'],
-  ['api-docs', '/api-docs', 'API Documentation', 'Data and comparison services used by OceanScope.'],
+  ['api-docs', '/api-docs', 'API Documentation', 'Data and comparison services used by ViaDariya.'],
 ] as const;
 
 function WorkspaceLink({ workspace, index, onOpen, supporting = false }: { workspace: readonly string[]; index: number; onOpen: (path: string, title: string) => void; supporting?: boolean }) {

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
 import { useResearchVisualization3D } from '@/integration';
 import { DepthInspectorScene } from '@/components/visualization/research3d/DepthInspectorScene';
 import { exportProfileCSV, exportComparisonCSV } from '@/utils/export';
 import { DepthSliceView } from '@/data/depthSlice';
 import { parseDelimitedObservations, ingestionTemplateCsv, type CsvIngestResult } from '@/data/csvIngest';
+import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 import type { Research3DPoint } from '@/integration';
 
 type ResearchTab = 'inspector' | 'comparison' | 'profiles' | 'observations' | 'slice';
@@ -23,31 +24,89 @@ export function ResearchWorkspace() {
     setVerticalExaggeration,
     colorScale,
     activeLayers,
+    researchDataMode,
+    setResearchDataMode,
   } = useOceanStore();
 
+  const isBenchmark = researchDataMode === 'benchmark';
+
   const {
-    points,
-    selectedProfilePoints,
-    selectedMeasurement,
-    stats,
+    points: benchmarkPoints,
+    selectedProfilePoints: benchmarkProfilePoints,
+    selectedMeasurement: benchmarkMeasurement,
+    stats: benchmarkStats,
     unit,
-    loading,
-    error,
+    loading: benchmarkLoading,
+    error: benchmarkError,
   } = useResearchVisualization3D({
     latitude: selectedLocation?.latitude ?? null,
     longitude: selectedLocation?.longitude ?? null,
     variable: selectedVariable,
     date: selectedDate,
     time: selectedTime,
-    selectedObservationId,
+    selectedObservationId: isBenchmark && selectedObservationId?.startsWith('argo_') ? selectedObservationId : null,
     selectedDepth,
+    enabled: isBenchmark,
   });
 
-  const hasSelection = selectedObservationId !== null && selectedLocation !== null;
+  const latestStream = useLatestDataStream();
+
+  const latestProfile = useMemo(() => {
+    return latestStream.observations.find((profile) =>
+      selectedObservationId === `latest_argo_${profile.platform_id}_${profile.cycle_number ?? profile.profile_id}`
+    ) ?? latestStream.observations[0] ?? null;
+  }, [latestStream.observations, selectedObservationId]);
+
+  const latestProfilePoints = useMemo<Research3DPoint[]>(() => {
+    if (!latestProfile) return [];
+    return latestProfile.levels.map((level) => ({
+      latitude: latestProfile.latitude,
+      longitude: latestProfile.longitude,
+      pressure: level.pressure,
+      argoValue: selectedVariable === 'salinity' ? level.salinity : level.temperature,
+      glorysValue: Number.NaN,
+      difference: Number.NaN,
+      timestamp: latestProfile.observation_time,
+      platformNumber: latestProfile.platform_id,
+      cycleNumber: String(latestProfile.cycle_number ?? ''),
+    }));
+  }, [latestProfile, selectedVariable]);
+
+  const latestAllPoints = useMemo<Research3DPoint[]>(() => {
+    return latestStream.observations.flatMap((profile) =>
+      profile.levels.map((level) => ({
+        latitude: profile.latitude,
+        longitude: profile.longitude,
+        pressure: level.pressure,
+        argoValue: selectedVariable === 'salinity' ? level.salinity : level.temperature,
+        glorysValue: Number.NaN,
+        difference: Number.NaN,
+        timestamp: profile.observation_time,
+        platformNumber: profile.platform_id,
+        cycleNumber: String(profile.cycle_number ?? ''),
+      }))
+    );
+  }, [latestStream.observations, selectedVariable]);
+
+  const points = isBenchmark ? benchmarkPoints : latestAllPoints;
+  const selectedProfilePoints = isBenchmark ? benchmarkProfilePoints : latestProfilePoints;
+  const loading = isBenchmark ? benchmarkLoading : latestStream.status === 'loading';
+  const error = isBenchmark ? benchmarkError : latestStream.error;
+
+  const selectedMeasurement = useMemo<Research3DPoint | null>(() => {
+    if (isBenchmark) return benchmarkMeasurement;
+    if (selectedProfilePoints.length === 0) return null;
+    return selectedProfilePoints.reduce<Research3DPoint | null>((closest, point) => {
+      if (!closest) return point;
+      return Math.abs(point.pressure - selectedDepth) < Math.abs(closest.pressure - selectedDepth) ? point : closest;
+    }, null);
+  }, [isBenchmark, benchmarkMeasurement, selectedProfilePoints, selectedDepth]);
+
+  const hasSelection = (selectedObservationId !== null || !isBenchmark) && selectedLocation !== null;
 
   const tabs: { id: ResearchTab; label: string }[] = [
     { id: 'inspector', label: '3D Inspector' },
-    { id: 'comparison', label: 'Comparison' },
+    { id: 'comparison', label: isBenchmark ? 'Comparison' : 'Evidence' },
     { id: 'profiles', label: 'Profiles' },
     { id: 'observations', label: 'Observations' },
     { id: 'slice', label: 'Depth Slice' },
@@ -82,13 +141,36 @@ export function ResearchWorkspace() {
           </span>
           <span className="h-3 w-px" style={{ background: 'var(--os-border)' }} />
           <span className="mono text-[11px] font-medium" style={{ color: 'var(--os-argo)' }}>
-            {selectedObservationId.replace('argo_', 'ARGO ').replace('_', ' · Cycle ')}
+            {isBenchmark
+              ? selectedObservationId?.replace('argo_', 'ARGO ').replace('_', ' · Cycle ')
+              : `ARGO ${latestProfile?.platform_id ?? 'LIVE'}${latestProfile?.cycle_number !== undefined ? ` · Cycle ${latestProfile.cycle_number}` : ''}`}
           </span>
+          {/* Mode Switcher */}
+          <div className="flex rounded border border-slate-800 bg-[#060a12] p-0.5 text-[10px] font-mono ml-2">
+            <button
+              type="button"
+              onClick={() => setResearchDataMode('benchmark')}
+              className={`px-2 py-0.5 rounded transition-colors ${
+                isBenchmark ? 'bg-cyan-950 text-cyan-300 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Benchmark (Jan 2024)
+            </button>
+            <button
+              type="button"
+              onClick={() => setResearchDataMode('latest')}
+              className={`px-2 py-0.5 rounded transition-colors ${
+                !isBenchmark ? 'bg-emerald-950 text-emerald-300 font-bold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Latest Argo (GDAC)
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <span className="mono text-[11px]" style={{ color: 'var(--os-text-2)' }}>
-            {selectedDate}
+            {isBenchmark ? selectedDate : (latestProfile?.observation_time?.slice(0, 10) || 'Live')}
           </span>
           <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>·</span>
           <span className="text-[11px]" style={{ color: 'var(--os-text-2)' }}>
@@ -135,12 +217,12 @@ export function ResearchWorkspace() {
                 )}
                 {!loading && !error && points.length === 0 && (
                   <div className="flex h-96 items-center justify-center">
-                    <p className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>No collocation data for this date</p>
+                    <p className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>No observation data available</p>
                   </div>
                 )}
                 {!loading && !error && points.length > 0 && (
                   <>
-                    {/* Selected depth evidence — prominent scientific readings */}
+                    {/* Selected depth evidence */}
                     {selectedMeasurement && (
                       <div className="mb-3 rounded border p-3" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
                         {/* Depth: requested vs nearest real */}
@@ -168,7 +250,7 @@ export function ResearchWorkspace() {
                         <div className="flex items-start gap-6">
                           {/* Argo */}
                           <div>
-                            <div className="research-sci-label" style={{ color: 'var(--os-argo)' }}>Argo</div>
+                            <div className="research-sci-label" style={{ color: 'var(--os-argo)' }}>Argo In-Situ</div>
                             <div className="mt-0.5 flex items-baseline gap-1">
                               <span className="research-sci-value" style={{ color: 'var(--os-argo)' }}>
                                 {selectedMeasurement.argoValue.toFixed(2)}
@@ -177,36 +259,40 @@ export function ResearchWorkspace() {
                             </div>
                           </div>
 
-                          {/* GLORYS */}
-                          <div>
-                            <div className="research-sci-label" style={{ color: 'var(--os-glorys)' }}>GLORYS12V1</div>
-                            <div className="mt-0.5 flex items-baseline gap-1">
-                              <span className="research-sci-value" style={{ color: 'var(--os-glorys)' }}>
-                                {selectedMeasurement.glorysValue.toFixed(2)}
-                              </span>
-                              <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+                          {/* GLORYS (Benchmark only) */}
+                          {isBenchmark && (
+                            <div>
+                              <div className="research-sci-label" style={{ color: 'var(--os-glorys)' }}>GLORYS12V1</div>
+                              <div className="mt-0.5 flex items-baseline gap-1">
+                                <span className="research-sci-value" style={{ color: 'var(--os-glorys)' }}>
+                                  {selectedMeasurement.glorysValue.toFixed(2)}
+                                </span>
+                                <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+                              </div>
                             </div>
-                          </div>
+                          )}
 
-                          {/* Difference */}
-                          <div>
-                            <div className="research-sci-label">GLORYS − Argo</div>
-                            <div className="mt-0.5 flex items-baseline gap-1">
-                              <span
-                                className="research-sci-value"
-                                style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
-                              >
-                                {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(2)}
-                              </span>
-                              <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
-                              <span
-                                className="research-evidence-diff-label"
-                                style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
-                              >
-                                {selectedMeasurement.difference >= 0 ? 'MODEL HIGH' : 'MODEL LOW'}
-                              </span>
+                          {/* Difference (Benchmark only) */}
+                          {isBenchmark && (
+                            <div>
+                              <div className="research-sci-label">GLORYS − Argo</div>
+                              <div className="mt-0.5 flex items-baseline gap-1">
+                                <span
+                                  className="research-sci-value"
+                                  style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
+                                >
+                                  {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(2)}
+                                </span>
+                                <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+                                <span
+                                  className="research-evidence-diff-label"
+                                  style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
+                                >
+                                  {selectedMeasurement.difference >= 0 ? 'MODEL HIGH' : 'MODEL LOW'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -220,6 +306,7 @@ export function ResearchWorkspace() {
                         selectedDepth={selectedDepth}
                         verticalExaggeration={verticalExaggeration}
                         colorScale={colorScale}
+                        mode={researchDataMode}
                         renderMode="variables"
                         layers={{
                           argo: {
@@ -227,11 +314,11 @@ export function ResearchWorkspace() {
                             opacity: activeLayers.find((l) => l.id === 'observations')?.opacity ?? 1,
                           },
                           glorys: {
-                            visible: activeLayers.find((l) => l.id === 'models')?.enabled ?? true,
+                            visible: isBenchmark && (activeLayers.find((l) => l.id === 'models')?.enabled ?? true),
                             opacity: activeLayers.find((l) => l.id === 'models')?.opacity ?? 1,
                           },
                           discrepancies: {
-                            visible: activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? false,
+                            visible: isBenchmark && (activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? false),
                             opacity: activeLayers.find((l) => l.id === 'discrepancies')?.opacity ?? 0.85,
                           },
                           depthSlice: {
@@ -286,47 +373,65 @@ export function ResearchWorkspace() {
 
             {/* Side panel — verification evidence */}
             <div className="w-56 shrink-0 overflow-y-auto border-l p-2.5 space-y-2.5" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
-              {stats && (
+              {isBenchmark && benchmarkStats && (
                 <>
                   <SidePanel title="Verification">
-                    <SidePanelRow label="Points" value={String(stats.totalPoints)} />
-                    <SidePanelRow label="Argo mean" value={`${stats.argoMean.toFixed(2)} ${unit}`} color="var(--os-argo)" />
-                    <SidePanelRow label="GLORYS mean" value={`${stats.glorysMean.toFixed(2)} ${unit}`} color="var(--os-glorys)" />
+                    <SidePanelRow label="Points" value={String(benchmarkStats.totalPoints)} />
+                    <SidePanelRow label="Argo mean" value={`${benchmarkStats.argoMean.toFixed(2)} ${unit}`} color="var(--os-argo)" />
+                    <SidePanelRow label="GLORYS mean" value={`${benchmarkStats.glorysMean.toFixed(2)} ${unit}`} color="var(--os-glorys)" />
                     <SidePanelRow
                       label="Mean diff"
-                      value={`${stats.meanDifference > 0 ? '+' : ''}${stats.meanDifference.toFixed(4)} ${unit}`}
-                      color={stats.meanDifference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'}
+                      value={`${benchmarkStats.meanDifference > 0 ? '+' : ''}${benchmarkStats.meanDifference.toFixed(4)} ${unit}`}
+                      color={benchmarkStats.meanDifference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)'}
                     />
-                    <SidePanelRow label="RMS" value={`${stats.rmsDifference.toFixed(4)} ${unit}`} />
-                    <SidePanelRow label="Max |Δ|" value={`${stats.maxDifference.toFixed(4)} ${unit}`} />
+                    <SidePanelRow label="RMS" value={`${benchmarkStats.rmsDifference.toFixed(4)} ${unit}`} />
+                    <SidePanelRow label="Max |Δ|" value={`${benchmarkStats.maxDifference.toFixed(4)} ${unit}`} />
                   </SidePanel>
 
                   <SidePanel title="Coverage">
-                    <SidePanelRow label="Depth" value={`${stats.depthRange[0]}–${stats.depthRange[1]} dbar`} />
-                    <SidePanelRow label="Lat" value={`${stats.spatialBounds.south}–${stats.spatialBounds.north}\u00B0N`} />
-                    <SidePanelRow label="Lon" value={`${stats.spatialBounds.west}–${stats.spatialBounds.east}\u00B0E`} />
+                    <SidePanelRow label="Depth" value={`${benchmarkStats.depthRange[0]}–${benchmarkStats.depthRange[1]} dbar`} />
+                    <SidePanelRow label="Lat" value={`${benchmarkStats.spatialBounds.south}–${benchmarkStats.spatialBounds.north}\u00B0N`} />
+                    <SidePanelRow label="Lon" value={`${benchmarkStats.spatialBounds.west}–${benchmarkStats.spatialBounds.east}\u00B0E`} />
                   </SidePanel>
                 </>
               )}
 
+              {!isBenchmark && latestProfile && (
+                <SidePanel title="Live Float Info">
+                  <SidePanelRow label="Source" value="Official Argo GDAC" color="var(--os-argo)" />
+                  <SidePanelRow label="Platform" value={latestProfile.platform_id} />
+                  <SidePanelRow label="Cycle" value={String(latestProfile.cycle_number ?? '—')} />
+                  <SidePanelRow label="Levels" value={String(latestProfile.levels.length)} />
+                  <SidePanelRow label="Active Floats" value={String(latestStream.observations.length)} />
+                </SidePanel>
+              )}
+
               <SidePanel title="Legend">
                 <LegendRow color="var(--os-argo)" label="Argo observation" />
-                <LegendRow color="var(--os-glorys)" label="GLORYS model" />
-                <LegendRow color="var(--os-diff-pos)" label="Positive diff (model high)" />
-                <LegendRow color="var(--os-diff-neg)" label="Negative diff (model low)" />
+                {isBenchmark && (
+                  <>
+                    <LegendRow color="var(--os-glorys)" label="GLORYS model" />
+                    <LegendRow color="var(--os-diff-pos)" label="Positive diff (model high)" />
+                    <LegendRow color="var(--os-diff-neg)" label="Negative diff (model low)" />
+                  </>
+                )}
                 <LegendRow color="var(--os-selected)" label="Selected depth" />
               </SidePanel>
 
               <SidePanel title="Source">
-                <p className="text-[9px]" style={{ color: 'var(--os-text-3)' }}>GLORYS12V1 × Argo Delayed Mode</p>
-                <p className="text-[9px] mt-0.5" style={{ color: 'var(--os-text-3)' }}>{points.length} points for {selectedDate}</p>
+                <p className="text-[9px]" style={{ color: 'var(--os-text-3)' }}>
+                  {isBenchmark ? 'GLORYS12V1 × Argo Delayed Mode' : 'Official Argo GDAC Live Feed'}
+                </p>
+                <p className="text-[9px] mt-0.5" style={{ color: 'var(--os-text-3)' }}>
+                  {points.length} points {isBenchmark ? `for ${selectedDate}` : ''}
+                </p>
               </SidePanel>
 
               <SidePanel title="Provenance">
-                <ProvenanceRow label="Spatial match" value="0.25° grid" />
-                <ProvenanceRow label="Temporal match" value="Daily nearest" />
+                <ProvenanceRow label="Spatial match" value={isBenchmark ? '0.25° grid' : 'In-situ CTD GPS'} />
+                <ProvenanceRow label="Temporal match" value={isBenchmark ? 'Daily nearest' : 'NRT GDAC timestamp'} />
                 <ProvenanceRow label="Depth match" value="Nearest available" />
-                <ProvenanceRow label="Difference" value="GLORYS − Argo" />
+                <ProvenanceRow label="Difference" value={isBenchmark ? 'GLORYS − Argo' : 'In-situ only'} />
               </SidePanel>
             </div>
           </div>
@@ -341,33 +446,40 @@ export function ResearchWorkspace() {
                   {/* Export button */}
                   <div className="flex justify-end">
                     <button
-                      onClick={() => exportComparisonCSV(selectedMeasurement, selectedVariable, unit)}
+                      onClick={() => {
+                        if (isBenchmark) {
+                          exportComparisonCSV(selectedMeasurement, selectedVariable, unit);
+                        } else {
+                          exportProfileCSV(selectedProfilePoints, selectedVariable, unit);
+                        }
+                      }}
                       className="text-[11px] px-2 py-1 border transition"
                       style={{ borderColor: 'var(--os-border)', color: 'var(--os-text-2)', background: 'var(--os-bg)' }}
                     >
-                      Export Comparison
+                      {isBenchmark ? 'Export Comparison' : 'Export Profile CSV'}
                     </button>
                   </div>
                   {/* Selected depth evidence — primary readings */}
                   <div className="rounded border p-4" style={{ borderColor: 'var(--os-border)', background: 'var(--os-surface)' }}>
-                    <div className="research-sci-label mb-2">Depth-Level Evidence</div>                      <div className="flex items-start gap-8">
-                          <div>
-                            <div className="research-sci-label">Nearest Real Measurement</div>
-                            <div className="mt-0.5 flex items-baseline gap-1">
-                              <span className="research-depth-badge">
-                                <span className="depth-value">{selectedMeasurement.pressure.toFixed(0)}</span>
-                                <span className="depth-unit">dbar</span>
-                              </span>
-                              {selectedDepth !== Math.round(selectedMeasurement.pressure) && (
-                                <span className="text-[9px]" style={{ color: 'var(--os-text-muted)' }}>
-                                  (requested: {selectedDepth} m)
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                    <div className="research-sci-label mb-2">Depth-Level Evidence</div>
+                    <div className="flex items-start gap-8">
+                      <div>
+                        <div className="research-sci-label">Nearest Real Measurement</div>
+                        <div className="mt-0.5 flex items-baseline gap-1">
+                          <span className="research-depth-badge">
+                            <span className="depth-value">{selectedMeasurement.pressure.toFixed(0)}</span>
+                            <span className="depth-unit">dbar</span>
+                          </span>
+                          {selectedDepth !== Math.round(selectedMeasurement.pressure) && (
+                            <span className="text-[9px]" style={{ color: 'var(--os-text-muted)' }}>
+                              (requested: {selectedDepth} m)
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                          <div>
-                            <div className="research-sci-label" style={{ color: 'var(--os-argo)' }}>Argo</div>
+                      <div>
+                        <div className="research-sci-label" style={{ color: 'var(--os-argo)' }}>Argo In-Situ</div>
                         <div className="mt-0.5 flex items-baseline gap-1">
                           <span className="research-sci-value" style={{ color: 'var(--os-argo)' }}>
                             {selectedMeasurement.argoValue.toFixed(2)}
@@ -375,62 +487,70 @@ export function ResearchWorkspace() {
                           <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
                         </div>
                       </div>
-                      <div>
-                        <div className="research-sci-label" style={{ color: 'var(--os-glorys)' }}>GLORYS12V1</div>
-                        <div className="mt-0.5 flex items-baseline gap-1">
-                          <span className="research-sci-value" style={{ color: 'var(--os-glorys)' }}>
-                            {selectedMeasurement.glorysValue.toFixed(2)}
-                          </span>
-                          <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+
+                      {isBenchmark && (
+                        <div>
+                          <div className="research-sci-label" style={{ color: 'var(--os-glorys)' }}>GLORYS12V1</div>
+                          <div className="mt-0.5 flex items-baseline gap-1">
+                            <span className="research-sci-value" style={{ color: 'var(--os-glorys)' }}>
+                              {selectedMeasurement.glorysValue.toFixed(2)}
+                            </span>
+                            <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+                          </div>
                         </div>
-                      </div>
-                      <div>
-                        <div className="research-sci-label">GLORYS − Argo</div>
-                        <div className="mt-0.5 flex items-baseline gap-1">
-                          <span
-                            className="research-sci-value"
-                            style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
-                          >
-                            {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(2)}
-                          </span>
-                          <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
-                          <span
-                            className="research-evidence-diff-label"
-                            style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
-                          >
-                            {selectedMeasurement.difference >= 0 ? 'MODEL HIGH' : 'MODEL LOW'}
-                          </span>
+                      )}
+
+                      {isBenchmark && (
+                        <div>
+                          <div className="research-sci-label">GLORYS − Argo</div>
+                          <div className="mt-0.5 flex items-baseline gap-1">
+                            <span
+                              className="research-sci-value"
+                              style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
+                            >
+                              {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(2)}
+                            </span>
+                            <span className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>{unit}</span>
+                            <span
+                              className="research-evidence-diff-label"
+                              style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}
+                            >
+                              {selectedMeasurement.difference >= 0 ? 'MODEL HIGH' : 'MODEL LOW'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Evidence table — tabular, not cards */}
-                  <div className="panel">
-                    <div className="panel-header">Model Verification</div>
-                    <div className="overflow-x-auto">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th></th>
-                            <th className="text-right" style={{ color: 'var(--os-argo)' }}>Argo</th>
-                            <th className="text-right" style={{ color: 'var(--os-glorys)' }}>GLORYS</th>
-                            <th className="text-right">Difference</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td className="font-medium" style={{ color: 'var(--os-text-2)' }}>{selectedVariable}</td>
-                            <td className="text-right mono" style={{ color: 'var(--os-argo)' }}>{selectedMeasurement.argoValue.toFixed(4)}</td>
-                            <td className="text-right mono" style={{ color: 'var(--os-glorys)' }}>{selectedMeasurement.glorysValue.toFixed(4)}</td>
-                            <td className="text-right mono" style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}>
-                              {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(4)} {unit}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+                  {isBenchmark && (
+                    <div className="panel">
+                      <div className="panel-header">Model Verification</div>
+                      <div className="overflow-x-auto">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th></th>
+                              <th className="text-right" style={{ color: 'var(--os-argo)' }}>Argo</th>
+                              <th className="text-right" style={{ color: 'var(--os-glorys)' }}>GLORYS</th>
+                              <th className="text-right">Difference</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="font-medium" style={{ color: 'var(--os-text-2)' }}>{selectedVariable}</td>
+                              <td className="text-right mono" style={{ color: 'var(--os-argo)' }}>{selectedMeasurement.argoValue.toFixed(4)}</td>
+                              <td className="text-right mono" style={{ color: 'var(--os-glorys)' }}>{selectedMeasurement.glorysValue.toFixed(4)}</td>
+                              <td className="text-right mono" style={{ color: selectedMeasurement.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}>
+                                {selectedMeasurement.difference > 0 ? '+' : ''}{selectedMeasurement.difference.toFixed(4)} {unit}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Profile chart */}
                   <ComparisonProfileChart
@@ -438,6 +558,7 @@ export function ResearchWorkspace() {
                     unit={unit}
                     variable={selectedVariable}
                     selectedMeasurement={selectedMeasurement}
+                    isBenchmark={isBenchmark}
                   />
                 </div>
               ) : (
@@ -466,6 +587,7 @@ export function ResearchWorkspace() {
                   unit={unit}
                   variable={selectedVariable}
                   selectedMeasurement={selectedMeasurement}
+                  isBenchmark={isBenchmark}
                 />
               ) : (
                 <div className="flex h-48 items-center justify-center">
@@ -503,6 +625,7 @@ export function ResearchWorkspace() {
                     points={selectedProfilePoints}
                     unit={unit}
                     selectedMeasurement={selectedMeasurement}
+                    isBenchmark={isBenchmark}
                   />
                 </>
               ) : (
@@ -677,31 +800,35 @@ function ComparisonProfileChart({
   unit,
   variable,
   selectedMeasurement,
+  isBenchmark = true,
 }: {
   points: Research3DPoint[];
   unit: string;
   variable: string;
   selectedMeasurement: Research3DPoint | null;
+  isBenchmark?: boolean;
 }) {
   const depthMap = new Map<number, { argo: number[]; glorys: number[] }>();
   for (const p of points) {
     const depth = Math.round(p.pressure * 10) / 10;
     if (!depthMap.has(depth)) depthMap.set(depth, { argo: [], glorys: [] });
     depthMap.get(depth)!.argo.push(p.argoValue);
-    depthMap.get(depth)!.glorys.push(p.glorysValue);
+    if (Number.isFinite(p.glorysValue)) {
+      depthMap.get(depth)!.glorys.push(p.glorysValue);
+    }
   }
 
   const profilePoints = Array.from(depthMap.entries())
     .map(([depth, vals]) => ({
       depth,
       argo: vals.argo.reduce((a, b) => a + b, 0) / vals.argo.length,
-      glorys: vals.glorys.reduce((a, b) => a + b, 0) / vals.glorys.length,
+      glorys: vals.glorys.length > 0 ? vals.glorys.reduce((a, b) => a + b, 0) / vals.glorys.length : Number.NaN,
     }))
     .sort((a, b) => a.depth - b.depth);
 
   if (profilePoints.length === 0) return null;
 
-  const allVals = profilePoints.flatMap((p) => [p.argo, p.glorys]);
+  const allVals = profilePoints.flatMap((p) => isBenchmark ? [p.argo, p.glorys] : [p.argo]).filter(Number.isFinite);
   const minVal = Math.min(...allVals);
   const maxVal = Math.max(...allVals);
   const maxDepth = Math.max(...profilePoints.map((p) => p.depth));
@@ -720,11 +847,11 @@ function ComparisonProfileChart({
   const toY = (depth: number) => padT + (depth / (maxDepth || 1)) * plotH;
 
   const argoPath = profilePoints.map((p) => `${toX(p.argo)},${toY(p.depth)}`).join(' ');
-  const glorysPath = profilePoints.map((p) => `${toX(p.glorys)},${toY(p.depth)}`).join(' ');
+  const glorysPath = profilePoints.filter((p) => Number.isFinite(p.glorys)).map((p) => `${toX(p.glorys)},${toY(p.depth)}`).join(' ');
 
   return (
     <div className="panel">
-      <div className="panel-header">Argo vs GLORYS Vertical Profile</div>
+      <div className="panel-header">{isBenchmark ? 'Argo vs GLORYS Vertical Profile' : 'Argo In-Situ Vertical Profile'}</div>
       <div className="p-3">
         <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ maxWidth: '700px' }}>
           {Array.from({ length: 6 }, (_, i) => {
@@ -748,24 +875,34 @@ function ComparisonProfileChart({
             );
           })}
           <polyline points={argoPath} fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 3" />
-          <polyline points={glorysPath} fill="none" stroke="#a855f7" strokeWidth="1.5" />
+          {isBenchmark && glorysPath && (
+            <polyline points={glorysPath} fill="none" stroke="#a855f7" strokeWidth="1.5" />
+          )}
           {profilePoints.map((p, i) => (
             <g key={i}>
               <circle cx={toX(p.argo)} cy={toY(p.depth)} r={2} fill="#22d3ee" />
-              <circle cx={toX(p.glorys)} cy={toY(p.depth)} r={2} fill="#a855f7" />
+              {isBenchmark && Number.isFinite(p.glorys) && (
+                <circle cx={toX(p.glorys)} cy={toY(p.depth)} r={2} fill="#a855f7" />
+              )}
             </g>
           ))}
           {selectedMeasurement && (
             <g>
               <line x1={padL} y1={toY(selectedMeasurement.pressure)} x2={chartW - padR} y2={toY(selectedMeasurement.pressure)} stroke="#06b6d4" strokeWidth="1" strokeDasharray="3 2" />
               <circle cx={toX(selectedMeasurement.argoValue)} cy={toY(selectedMeasurement.pressure)} r={3.5} fill="none" stroke="#f8fafc" strokeWidth="1" />
-              <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={3.5} fill="none" stroke="#f8fafc" strokeWidth="1" />
+              {isBenchmark && Number.isFinite(selectedMeasurement.glorysValue) && (
+                <circle cx={toX(selectedMeasurement.glorysValue)} cy={toY(selectedMeasurement.pressure)} r={3.5} fill="none" stroke="#f8fafc" strokeWidth="1" />
+              )}
             </g>
           )}
           <line x1={padL + 8} y1={chartH - 6} x2={padL + 24} y2={chartH - 6} stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 3" />
           <text x={padL + 28} y={chartH - 3.5} fill="#94a3b8" fontSize="9">Argo</text>
-          <line x1={padL + 68} y1={chartH - 6} x2={padL + 84} y2={chartH - 6} stroke="#a855f7" strokeWidth="1.5" />
-          <text x={padL + 88} y={chartH - 3.5} fill="#94a3b8" fontSize="9">GLORYS</text>
+          {isBenchmark && (
+            <>
+              <line x1={padL + 68} y1={chartH - 6} x2={padL + 84} y2={chartH - 6} stroke="#a855f7" strokeWidth="1.5" />
+              <text x={padL + 88} y={chartH - 3.5} fill="#94a3b8" fontSize="9">GLORYS</text>
+            </>
+          )}
           <text x={padL + plotW / 2} y={chartH - 18} textAnchor="middle" fill="#64748b" fontSize="9">{variable} ({unit})</text>
           <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="#64748b" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>Depth (dbar)</text>
         </svg>
@@ -784,13 +921,15 @@ function VerticalProfileChart({
   unit,
   variable,
   selectedMeasurement,
+  isBenchmark = true,
 }: {
   points: Research3DPoint[];
   unit: string;
   variable: string;
   selectedMeasurement: Research3DPoint | null;
+  isBenchmark?: boolean;
 }) {
-  const allVals = points.flatMap((p) => [p.glorysValue, p.argoValue]);
+  const allVals = points.flatMap((p) => isBenchmark ? [p.glorysValue, p.argoValue] : [p.argoValue]).filter(Number.isFinite);
   const minVal = Math.min(...allVals);
   const maxVal = Math.max(...allVals);
   const maxDepth = Math.max(...points.map((p) => p.pressure));
@@ -809,11 +948,11 @@ function VerticalProfileChart({
   const toY = (depth: number) => padT + (depth / (maxDepth || 1)) * plotH;
 
   const argoPath = points.map((p) => `${toX(p.argoValue)},${toY(p.pressure)}`).join(' ');
-  const glorysPath = points.map((p) => `${toX(p.glorysValue)},${toY(p.pressure)}`).join(' ');
+  const glorysPath = points.filter((p) => Number.isFinite(p.glorysValue)).map((p) => `${toX(p.glorysValue)},${toY(p.pressure)}`).join(' ');
 
   return (
     <div className="panel">
-      <div className="panel-header">Vertical Profile</div>
+      <div className="panel-header">{isBenchmark ? 'Vertical Profile (Argo vs GLORYS)' : 'Vertical Profile (Argo CTD)'}</div>
       <div className="p-3">
         <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ maxWidth: '700px' }}>
           {Array.from({ length: 6 }, (_, i) => {
@@ -837,11 +976,15 @@ function VerticalProfileChart({
             );
           })}
           <polyline points={argoPath} fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 3" />
-          <polyline points={glorysPath} fill="none" stroke="#a855f7" strokeWidth="1.5" />
+          {isBenchmark && glorysPath && (
+            <polyline points={glorysPath} fill="none" stroke="#a855f7" strokeWidth="1.5" />
+          )}
           {points.map((p, i) => (
             <g key={i}>
               <circle cx={toX(p.argoValue)} cy={toY(p.pressure)} r={2} fill="#22d3ee" />
-              <circle cx={toX(p.glorysValue)} cy={toY(p.pressure)} r={2} fill="#a855f7" />
+              {isBenchmark && Number.isFinite(p.glorysValue) && (
+                <circle cx={toX(p.glorysValue)} cy={toY(p.pressure)} r={2} fill="#a855f7" />
+              )}
             </g>
           ))}
           {selectedMeasurement && (
@@ -849,8 +992,12 @@ function VerticalProfileChart({
           )}
           <line x1={padL + 8} y1={chartH - 6} x2={padL + 24} y2={chartH - 6} stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="5 3" />
           <text x={padL + 28} y={chartH - 3.5} fill="#94a3b8" fontSize="9">Argo</text>
-          <line x1={padL + 68} y1={chartH - 6} x2={padL + 84} y2={chartH - 6} stroke="#a855f7" strokeWidth="1.5" />
-          <text x={padL + 88} y={chartH - 3.5} fill="#94a3b8" fontSize="9">GLORYS</text>
+          {isBenchmark && (
+            <>
+              <line x1={padL + 68} y1={chartH - 6} x2={padL + 84} y2={chartH - 6} stroke="#a855f7" strokeWidth="1.5" />
+              <text x={padL + 88} y={chartH - 3.5} fill="#94a3b8" fontSize="9">GLORYS</text>
+            </>
+          )}
           <text x={padL + plotW / 2} y={chartH - 18} textAnchor="middle" fill="#64748b" fontSize="9">{variable} ({unit})</text>
           <text x={12} y={padT + plotH / 2} textAnchor="middle" fill="#64748b" fontSize="9" transform={`rotate(-90, 12, ${padT + plotH / 2})`}>Depth (dbar)</text>
         </svg>
@@ -870,10 +1017,12 @@ function ObservationsTable({
   points,
   unit,
   selectedMeasurement,
+  isBenchmark = true,
 }: {
   points: Research3DPoint[];
   unit: string;
   selectedMeasurement: Research3DPoint | null;
+  isBenchmark?: boolean;
 }) {
   return (
     <div className="panel overflow-hidden">
@@ -886,8 +1035,8 @@ function ObservationsTable({
               <th className="text-left">Lon</th>
               <th className="text-right">Depth</th>
               <th className="text-right">Argo ({unit})</th>
-              <th className="text-right">GLORYS ({unit})</th>
-              <th className="text-right">Diff</th>
+              {isBenchmark && <th className="text-right">GLORYS ({unit})</th>}
+              {isBenchmark && <th className="text-right">Diff</th>}
               <th className="text-left">Platform</th>
             </tr>
           </thead>
@@ -896,6 +1045,7 @@ function ObservationsTable({
               const isSelected = selectedMeasurement?.platformNumber === p.platformNumber
                 && selectedMeasurement?.cycleNumber === p.cycleNumber
                 && selectedMeasurement?.pressure === p.pressure;
+              const hasModel = Number.isFinite(p.glorysValue);
               return (
                 <tr
                   key={i}
@@ -906,10 +1056,16 @@ function ObservationsTable({
                   <td style={{ color: 'var(--os-text)' }}>{p.longitude.toFixed(2)}</td>
                   <td className="text-right mono" style={{ color: 'var(--os-text)' }}>{p.pressure.toFixed(1)}</td>
                   <td className="text-right mono" style={{ color: 'var(--os-argo)' }}>{p.argoValue.toFixed(2)}</td>
-                  <td className="text-right mono" style={{ color: 'var(--os-glorys)' }}>{p.glorysValue.toFixed(2)}</td>
-                  <td className="text-right mono" style={{ color: p.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)' }}>
-                    {p.difference > 0 ? '+' : ''}{p.difference.toFixed(4)}
-                  </td>
+                  {isBenchmark && (
+                    <td className="text-right mono" style={{ color: 'var(--os-glorys)' }}>
+                      {hasModel ? p.glorysValue.toFixed(2) : '—'}
+                    </td>
+                  )}
+                  {isBenchmark && (
+                    <td className="text-right mono" style={{ color: hasModel ? (p.difference >= 0 ? 'var(--os-diff-pos)' : 'var(--os-diff-neg)') : 'var(--os-text-muted)' }}>
+                      {hasModel ? `${p.difference > 0 ? '+' : ''}${p.difference.toFixed(4)}` : '—'}
+                    </td>
+                  )}
                   <td style={{ color: 'var(--os-text-3)' }}>{p.platformNumber}</td>
                 </tr>
               );
@@ -920,6 +1076,7 @@ function ObservationsTable({
     </div>
   );
 }
+
 
 // ── CSV Ingestion Panel (SIH26067 Priority 8) ────────────────────
 
@@ -965,7 +1122,7 @@ function CsvIngestPanel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'oceanscope_ingestion_template.csv';
+    a.download = 'viadariya_ingestion_template.csv';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1034,7 +1191,7 @@ function CsvIngestPanel() {
             )}
             <p className="text-[9px] text-[var(--os-text-muted)] leading-relaxed">
               Parsed records enter the canonical architecture for export and downstream adapters.
-              They are clearly labelled as user-declared data and never displayed as OceanScope
+              They are clearly labelled as user-declared data and never displayed as ViaDariya
               measurements or merged into the validated GLORYS × Argo collocation dataset.
             </p>
           </div>

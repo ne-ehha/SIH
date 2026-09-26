@@ -250,14 +250,14 @@ export function DiscrepancyMap() {
 
   const { points, selectedProfilePoints, unit, loading, error, refetch } =
     useResearchVisualization3D({
-      latitude: selectedLocation?.latitude ?? null,
-      longitude: selectedLocation?.longitude ?? null,
+      latitude: selectedLocation?.latitude ?? 14.5,
+      longitude: selectedLocation?.longitude ?? 87.2,
       variable: comparisonVariable ? selectedVariable : 'temperature',
-      date: selectedDate,
-      time: selectedTime,
+      date: selectedDate || '2024-01-08',
+      time: selectedTime || '12:00',
       selectedObservationId,
       selectedDepth,
-      enabled: comparisonVariable && selectedLocation !== null,
+      enabled: true,
     });
 
   const mapPoints = useMemo(
@@ -272,10 +272,15 @@ export function DiscrepancyMap() {
   );
 
   const selectedEvidence = useMemo(() => {
-    if (!selectedObservationId) return null;
-    const fromMap = mapPoints.find((p) => observationIdFromPoint(p) === selectedObservationId);
-    if (fromMap) return fromMap;
-    return findNearestResearchMeasurement(selectedProfilePoints, selectedDepth);
+    if (selectedProfilePoints.length > 0) {
+      const nearest = findNearestResearchMeasurement(selectedProfilePoints, selectedDepth);
+      if (nearest) return nearest;
+    }
+    if (selectedObservationId) {
+      const fromMap = mapPoints.find((p) => observationIdFromPoint(p) === selectedObservationId);
+      if (fromMap) return fromMap;
+    }
+    return mapPoints[0] || null;
   }, [mapPoints, selectedObservationId, selectedProfilePoints, selectedDepth]);
 
   const largestAbsPoint = useMemo(() => {

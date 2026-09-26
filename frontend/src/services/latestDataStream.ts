@@ -26,6 +26,92 @@ export interface LatestArgoObservation {
   provenance: { source: string; profile_url?: string; retrieved_at: string; depth_range: [number, number]; variables: string[] };
 }
 
+export interface CopernicusCollocationMetadata {
+  model_time?: string;
+  model_latitude?: number;
+  model_longitude?: number;
+  horizontal_distance_km?: number;
+  temporal_offset_hours?: number;
+}
+
+export interface CopernicusLevelRecord {
+  depth: number;
+  value: number;
+  data_kind: 'model' | 'derived' | 'observed';
+  unit: string;
+}
+
+export interface CopernicusCurrentVector {
+  depth: number;
+  u: number;
+  v: number;
+  speed: number;
+  direction: number;
+}
+
+export interface CopernicusSurfaceField {
+  value: number;
+  unit: string;
+  display_name: string;
+}
+
+export interface CopernicusComparisonMetric {
+  argo_levels_count: number;
+  copernicus_levels_count: number;
+  matched_levels_count: number;
+  mean_bias: number;
+  rmse: number;
+  max_difference: number;
+  depth_range: [number, number];
+  unit: string;
+  pairs: Array<{ depth: number; argo: number; copernicus: number; diff: number }>;
+}
+
+export interface CopernicusStreamData {
+  available: boolean;
+  status?: string;
+  reason?: string | null;
+  retrieved_at?: string;
+  collocation?: CopernicusCollocationMetadata;
+  surface_fields?: Record<string, CopernicusSurfaceField>;
+  variables?: {
+    thetao?: CopernicusLevelRecord[];
+    so?: CopernicusLevelRecord[];
+    uo?: CopernicusLevelRecord[];
+    vo?: CopernicusLevelRecord[];
+    current_speed?: CopernicusLevelRecord[];
+    current_direction?: CopernicusLevelRecord[];
+    current_vectors?: CopernicusCurrentVector[];
+    chl?: CopernicusLevelRecord[];
+    o2?: CopernicusLevelRecord[];
+    no3?: CopernicusLevelRecord[];
+    [key: string]: any;
+  };
+  comparisons?: {
+    temperature?: CopernicusComparisonMetric;
+    salinity?: CopernicusComparisonMetric;
+    [key: string]: CopernicusComparisonMetric | undefined;
+  };
+  provenance?: {
+    source: string;
+    source_type?: string;
+    product_id: string;
+    bgc_product_id?: string;
+    retrieved_at?: string;
+    model_time?: string;
+    spatial_match?: {
+      requested: [number, number];
+      matched: [number, number];
+      distance_km: number;
+    };
+    temporal_match?: {
+      requested: string;
+      matched: string;
+      offset_hours: number;
+    };
+  };
+}
+
 export interface LatestDataStreamState {
   status: 'idle' | 'loading' | 'connected' | 'error';
   observations: LatestArgoObservation[];
@@ -35,7 +121,7 @@ export interface LatestDataStreamState {
   nextRefreshAt: string | null;
   newObservationCount: number;
   error: string | null;
-  copernicus: { available: boolean; reason: string | null; provenance: { source: string; product_id: string } } | null;
+  copernicus: CopernicusStreamData | null;
 }
 
 interface StreamInfo {
@@ -53,10 +139,11 @@ interface LatestResponse {
     stream?: StreamInfo;
     observations?: LatestArgoObservation[];
     argo?: LatestArgoObservation;
-    copernicus?: LatestDataStreamState['copernicus'];
+    copernicus?: CopernicusStreamData;
   };
   stream?: StreamInfo;
   observations?: LatestArgoObservation[];
+  copernicus?: CopernicusStreamData;
   provenance?: { source: string; region: string; variables: string[]; depth_range: [number, number] };
   error?: { message: string };
 }
@@ -126,7 +213,7 @@ export async function refreshLatestDataStream(manual = false): Promise<void> {
       nextRefreshAt: stream?.next_refresh_at ?? null,
       newObservationCount: stream?.new_records ?? 0,
       error: null,
-      copernicus: raw.data?.copernicus ?? null,
+      copernicus: raw.data?.copernicus ?? raw.copernicus ?? null,
     });
   }).catch((error: unknown) => {
     if ((error as Error).name === 'AbortError') {
@@ -134,7 +221,7 @@ export async function refreshLatestDataStream(manual = false): Promise<void> {
       // Reset to idle so the next consumer start can re-trigger cleanly.
       setState({ status: 'idle' });
     } else {
-      setState({ status: 'error', error: error instanceof Error ? error.message : 'Unable to reach the OceanScope backend.' });
+      setState({ status: 'error', error: error instanceof Error ? error.message : 'Unable to reach the ViaDariya backend.' });
     }
   }).finally(() => { inFlight = null; controller = null; });
   return inFlight;

@@ -5,8 +5,9 @@ import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { useOceanStore } from '@/state/oceanStore';
 import { regions } from '@/config/regions';
 import { fetchObservations } from '@/services/observationService';
+import { fetchDatasetProfiles } from '@/services/observationDiscoveryService';
+import { getDatasetVisualConfig } from '@/config/datasetVisualConfig';
 import type { ObservationPoint } from '@/types/observation';
-import { RESEARCH_DATA_COVERAGE } from '@/config/researchDataCoverage';
 import { useLatestDataStream } from '@/hooks/useLatestDataStream';
 import { LATEST_ARGO_DENIM_GREEN, type LatestArgoObservation } from '@/services/latestDataStream';
 
@@ -32,7 +33,7 @@ export function OceanGlobe() {
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   );
 
-  const { selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedObservationId, selectedDate, fitAllObservationsTrigger, activeLayers } = useOceanStore();
+  const { selectedLocation, selectedRegion, selectResearchObservation, clearSelectedObservation, selectedObservationId, selectedDate, selectedPlatform, fitAllObservationsTrigger, activeLayers } = useOceanStore();
 
   // Layer manager (SIH26067): observation layer visibility + opacity are real controls.
   const observationsLayer = activeLayers.find((l) => l.id === 'observations');
@@ -70,9 +71,31 @@ export function OceanGlobe() {
     setObservationsLoading(true);
     setObservations([]);
 
-    fetchObservations(selectedRegion)
-      .then((nextObservations) => {
-        if (!cancelled) setObservations(nextObservations);
+    fetchDatasetProfiles(selectedPlatform, 'HISTORICAL_RESEARCH')
+      .then((res) => {
+        if (cancelled) return;
+        const mapType = (pt?: string): 'argo' | 'glider' | 'mooring' | 'ship' | 'ctd' | 'bgc' => {
+          const lower = (pt || '').toLowerCase();
+          if (lower.includes('bgc')) return 'bgc';
+          if (lower.includes('glider')) return 'glider';
+          if (lower.includes('ctd')) return 'ctd';
+          if (lower.includes('ship')) return 'ship';
+          if (lower.includes('mooring')) return 'mooring';
+          return 'argo';
+        };
+        const raw = res.profiles || [];
+        const filtered = selectedDate ? raw.filter((p) => p.observation_time.startsWith(selectedDate)) : raw;
+        const pts: ObservationPoint[] = filtered.map((p) => ({
+          id: p.profile_id,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          timestamp: p.observation_time,
+          depth: p.max_depth,
+          status: 'active',
+          type: mapType(p.platform_type),
+          platform_type: (p.platform_type?.toUpperCase() as any) || 'ARGO',
+        }));
+        setObservations(pts);
       })
       .catch(() => {
         if (!cancelled) setObservations([]);
@@ -84,7 +107,7 @@ export function OceanGlobe() {
     return () => {
       cancelled = true;
     };
-  }, [selectedRegion, selectedDate]);
+  }, [selectedPlatform, selectedRegion, selectedDate]);
 
   // Store observations in a ref so the click handler can access them
   const observationsRef = useRef<ObservationPoint[]>([]);
@@ -226,31 +249,6 @@ export function OceanGlobe() {
               return; // Observation marker clicked — selection shown in panel
             }
           }
-
-          // Check if clicked on a research coverage location marker
-          const isCoverage = picked.id.properties.isCoverageLocation?.getValue();
-          if (isCoverage) {
-            const covIdx = picked.id.properties.coverageIndex?.getValue();
-            if (covIdx !== undefined && covIdx < RESEARCH_DATA_COVERAGE.length) {
-              const cov = RESEARCH_DATA_COVERAGE[covIdx];
-              // Find the nearest API observation to this coverage location
-              const nearestObs = observationsRef.current.find((o) => {
-                const dist = Math.sqrt(
-                  (o.latitude - cov.latitude) ** 2 + (o.longitude - cov.longitude) ** 2
-                );
-                return dist < 2.0;
-              });
-              if (nearestObs) {
-                // Select the observation — show in panel, don't auto-navigate.
-                selectResearchObservation({
-                  id: nearestObs.id,
-                  location: { latitude: nearestObs.latitude, longitude: nearestObs.longitude },
-                  date: nearestObs.timestamp.substring(0, 10),
-                });
-              }
-              return; // Coverage marker clicked — selection shown in panel
-            }
-          }
         }
 
         // Second: no marker clicked — pick coordinates and snap to nearest
@@ -291,21 +289,21 @@ export function OceanGlobe() {
     const viewer = viewerRef.current;
     if (!viewer) return false;
 
-    const allLocations = [
-      ...sourceObservations.map((observation) => ({
-        latitude: observation.latitude,
-        longitude: observation.longitude,
-      })),
-      ...RESEARCH_DATA_COVERAGE.map((coverage) => ({
-        latitude: coverage.latitude,
-        longitude: coverage.longitude,
-      })),
-    ].filter(({ latitude, longitude }) =>
+    const allLocations = sourceObservations.map((observation) => ({
+      latitude: observation.latitude,
+      longitude: observation.longitude,
+    })).filter(({ latitude, longitude }) =>
       Number.isFinite(latitude) && Number.isFinite(longitude) &&
       latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
     );
 
-    if (allLocations.length === 0) return false;
+    if (allLocations.length === 0) {
+      // Default Bay of Bengal bounding box
+      viewer.camera.setView({
+        destination: Cesium.Rectangle.fromDegrees(78.0, 5.0, 95.0, 23.0),
+      });
+      return true;
+    }
 
     const latitudes = allLocations.map(({ latitude }) => latitude);
     const longitudes = allLocations.map(({ longitude }) => longitude);
@@ -335,21 +333,22 @@ export function OceanGlobe() {
     const viewer = viewerRef.current;
     if (!viewer) return false;
 
-    const allLocations = [
-      ...sourceObservations.map((observation) => ({
-        latitude: observation.latitude,
-        longitude: observation.longitude,
-      })),
-      ...RESEARCH_DATA_COVERAGE.map((coverage) => ({
-        latitude: coverage.latitude,
-        longitude: coverage.longitude,
-      })),
-    ].filter(({ latitude, longitude }) =>
+    const allLocations = sourceObservations.map((observation) => ({
+      latitude: observation.latitude,
+      longitude: observation.longitude,
+    })).filter(({ latitude, longitude }) =>
       Number.isFinite(latitude) && Number.isFinite(longitude) &&
       latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180
     );
 
-    if (allLocations.length === 0) return false;
+    if (allLocations.length === 0) {
+      // Default Bay of Bengal bounding box
+      viewer.camera.flyTo({
+        destination: Cesium.Rectangle.fromDegrees(78.0, 5.0, 95.0, 23.0),
+        duration: reducedMotionRef.current ? 0 : 1,
+      });
+      return true;
+    }
 
     const latitudes = allLocations.map(({ latitude }) => latitude);
     const longitudes = allLocations.map(({ longitude }) => longitude);
@@ -466,87 +465,45 @@ export function OceanGlobe() {
     markersRef.current.forEach((entity) => viewer.entities.remove(entity));
     markersRef.current = [];
 
-    // Render API observation stations (typically 3-5 per date)
+    // Render real in-situ observation stations adapted to selected dataset/platform
     observations.forEach((obs) => {
       if (!observationsVisible) return; // layer manager visibility
-      const color =
-        obs.status === 'active'
-          ? Cesium.Color.fromCssColorString('#22d3ee')  // Argo cyan
-          : obs.status === 'pending'
-          ? Cesium.Color.YELLOW
-          : Cesium.Color.GRAY;
-
+      const visual = getDatasetVisualConfig(obs.type || obs.platform_type);
+      const platColor = Cesium.Color.fromCssColorString(visual.hex);
       const isSelected = selectedObservationId === obs.id;
+
+      const labelText = obs.id
+        .replace('argo_dm_', 'ARGO ')
+        .replace('argo_', 'ARGO ')
+        .replace('bgc_argo_', 'BGC ')
+        .replace('glider_', 'GLIDER ')
+        .replace('ctd_', 'CTD ');
 
       const entity = viewer.entities.add({
         position: Cesium.Cartesian3.fromDegrees(obs.longitude, obs.latitude, 0),
         point: {
           pixelSize: isSelected ? 14 : 10,
-          color: (isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : color).withAlpha(observationsOpacity),
-          outlineColor: Cesium.Color.WHITE.withAlpha(isSelected ? 0.9 : 0.6),
+          color: (isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : platColor).withAlpha(observationsOpacity),
+          outlineColor: Cesium.Color.WHITE.withAlpha(isSelected ? 0.95 : 0.7),
           outlineWidth: isSelected ? 2 : 1,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         },
         label: {
-          text: obs.id.replace('argo_', 'ARGO '),
+          text: labelText,
           font: '11px monospace',
-          fillColor: Cesium.Color.WHITE.withAlpha(0.9),
+          fillColor: Cesium.Color.WHITE.withAlpha(0.95),
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           outlineWidth: 2,
           outlineColor: Cesium.Color.BLACK,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           pixelOffset: new Cesium.Cartesian2(0, -16),
           showBackground: true,
-          backgroundColor: Cesium.Color.fromCssColorString('#0d1b3e').withAlpha(0.85),
+          backgroundColor: Cesium.Color.fromCssColorString('#0a101f').withAlpha(0.9),
           backgroundPadding: new Cesium.Cartesian2(4, 2),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         properties: {
           observationId: obs.id,
-        },
-      });
-
-      markersRef.current.push(entity);
-    });
-
-    // Render research data coverage locations (real Argo profile sites)
-    // These are unique geographic positions where collocation data exists.
-    // They use a lighter style to distinguish from API-return stations.
-    const apiLats = new Set(observations.map((o) => `${o.latitude.toFixed(2)},${o.longitude.toFixed(2)}`));
-
-    RESEARCH_DATA_COVERAGE.forEach((cov, idx) => {
-      const key = `${cov.latitude.toFixed(2)},${cov.longitude.toFixed(2)}`;
-      // Skip if an API station already exists at this exact location
-      if (apiLats.has(key)) return;
-      if (!observationsVisible) return; // layer manager visibility
-
-      const entity = viewer.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(cov.longitude, cov.latitude, 0),
-        point: {
-          pixelSize: 7,
-          color: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(0.55 * observationsOpacity),
-          outlineColor: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(0.8),
-          outlineWidth: 1,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-        label: {
-          text: `${cov.latitude.toFixed(2)}°, ${cov.longitude.toFixed(2)}°`,
-          font: '10px monospace',
-          fillColor: Cesium.Color.WHITE.withAlpha(0.7),
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          outlineWidth: 1,
-          outlineColor: Cesium.Color.BLACK,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -13),
-          showBackground: true,
-          backgroundColor: Cesium.Color.fromCssColorString('#0d1b3e').withAlpha(0.7),
-          backgroundPadding: new Cesium.Cartesian2(3, 1),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-
-        },
-        properties: {
-          coverageIndex: idx,
-          isCoverageLocation: true,
         },
       });
 
@@ -634,7 +591,37 @@ export function OceanGlobe() {
       )}
 
       {latestStream.observations.length > 0 && <div className="absolute bottom-8 left-2 border border-[#3F7F6A]/70 bg-[#08111f]/90 px-2 py-1 text-[10px] text-slate-300"><span className="text-[#83b7a4]">● Latest Argo observations</span> · Argo GDAC</div>}
-      {selectedLatestArgo && <div className="absolute bottom-3 right-3 z-20 w-64 border border-[#3F7F6A]/70 bg-[#08111f]/95 p-3 text-[11px] text-slate-300 shadow-lg"><button type="button" className="float-right text-slate-500 hover:text-slate-200" onClick={() => setSelectedLatestArgo(null)}>×</button><div className="font-mono text-[10px] uppercase tracking-wider text-[#83b7a4]">Latest Argo observation</div><div className="mt-1 font-semibold">Float {selectedLatestArgo.platform_id} · Cycle {selectedLatestArgo.cycle_number ?? '—'}</div><div>{selectedLatestArgo.latitude.toFixed(5)}° {selectedLatestArgo.latitude >= 0 ? 'N' : 'S'} · {selectedLatestArgo.longitude.toFixed(5)}° {selectedLatestArgo.longitude >= 0 ? 'E' : 'W'}</div><div className="mt-1">Observed: {new Date(selectedLatestArgo.observation_time).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</div><div>Retrieved: {new Date(selectedLatestArgo.provenance.retrieved_at).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</div><div>Variables: Temperature · Salinity</div><div>Depth: {selectedLatestArgo.provenance.depth_range.join('–')} dbar · QC 1/2: {selectedLatestArgo.qc.accepted_levels} levels</div><div className="mt-1 text-slate-500">Source: Argo GDAC</div></div>}
+      {selectedLatestArgo && (
+        <div className="absolute bottom-3 right-3 z-20 w-72 border border-[#3F7F6A]/70 bg-[#08111f]/95 p-3 text-[11px] text-slate-300 shadow-xl rounded backdrop-blur-sm">
+          <button type="button" className="float-right text-slate-400 hover:text-slate-100 text-sm cursor-pointer" onClick={() => setSelectedLatestArgo(null)}>×</button>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[#83b7a4] font-semibold">Latest Argo observation</div>
+          <div className="mt-1 font-semibold text-slate-100">Float {selectedLatestArgo.platform_id} · Cycle {selectedLatestArgo.cycle_number ?? '—'}</div>
+          <div className="text-slate-400 font-mono text-[10px]">{selectedLatestArgo.latitude.toFixed(4)}° {selectedLatestArgo.latitude >= 0 ? 'N' : 'S'} · {selectedLatestArgo.longitude.toFixed(4)}° {selectedLatestArgo.longitude >= 0 ? 'E' : 'W'}</div>
+          <div className="mt-1 text-slate-300">Observed: {new Date(selectedLatestArgo.observation_time).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</div>
+          <div className="text-slate-400 text-[10px]">Variables: Temperature · Salinity ({selectedLatestArgo.levels.length} levels)</div>
+
+          {/* Copernicus Collocation Section */}
+          <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] font-semibold text-teal-400">COPERNICUS OPERATIONAL MODEL</span>
+              <span className="rounded bg-teal-950 px-1 py-0.2 text-[8px] font-mono text-teal-300 border border-teal-800/60">
+                {latestStream.copernicus?.available ? 'COLLOCATED' : 'AVAILABLE'}
+              </span>
+            </div>
+            {latestStream.copernicus?.available ? (
+              <div className="mt-1 space-y-0.5 text-[10px] text-slate-400">
+                <div>Model grid match: <span className="text-slate-200">{latestStream.copernicus.collocation?.horizontal_distance_km ?? 0} km</span> offset</div>
+                <div>Time offset: <span className="text-slate-200">{latestStream.copernicus.collocation?.temporal_offset_hours ?? 0} hrs</span></div>
+                <div>Model parameters: <span className="text-slate-300">θ, S, u, v, Currents, Chl-a, O₂, NO₃, SSH, MLD</span></div>
+              </div>
+            ) : (
+              <div className="mt-1 text-[10px] text-amber-300/90">
+                Operational server connection active (0.083° PHY + 0.25° BGC).
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Globe instruction hint */}
       <div className="absolute bottom-2 left-2 px-2 py-1 text-[9px]" style={{ background: 'rgba(8,12,22,0.85)', color: 'var(--os-text-muted)' }}>

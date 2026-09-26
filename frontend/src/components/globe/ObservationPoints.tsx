@@ -1,121 +1,175 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOceanStore } from '@/state/oceanStore';
-import { fetchObservations } from '@/services/observationService';
-import { RESEARCH_DATA_COVERAGE } from '@/config/researchDataCoverage';
+import { fetchDatasetProfiles, type DatasetProfileSummary } from '@/services/observationDiscoveryService';
+import { getDatasetVisualConfig, DATASET_VISUAL_CONFIG } from '@/config/datasetVisualConfig';
 import { formatLatitude, formatLongitude } from '@/utils/coordinates';
-import type { ObservationPoint } from '@/types/observation';
 
 export function ObservationPoints() {
   const {
     selectedObservationId,
-    selectedRegion,
     selectedDate,
+    selectedPlatform,
+    setSelectedPlatform,
     selectResearchObservation,
     triggerFitAllObservations,
+    setAvailableDates,
+    setDatasetTemporalRange,
   } = useOceanStore();
-  const [observations, setObservations] = useState<ObservationPoint[]>([]);
+
+  const [allProfiles, setAllProfiles] = useState<DatasetProfileSummary[]>([]);
+  const [temporalRange, setTemporalRange] = useState<{ start: string; end: string }>({ start: '2024-01-01', end: '2024-01-15' });
+  const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    fetchObservations(selectedRegion)
-      .then(setObservations)
-      .catch(() => setObservations([]));
-  }, [selectedRegion, selectedDate]);
+    setLoading(true);
+    fetchDatasetProfiles(selectedPlatform, 'HISTORICAL_RESEARCH')
+      .then((res) => {
+        const raw = res.profiles || [];
+        setAllProfiles(raw);
+        if (res.temporal_range) {
+          setTemporalRange(res.temporal_range);
+          setDatasetTemporalRange(res.temporal_range);
+        }
+        if (res.available_dates && res.available_dates.length > 0) {
+          setAvailableDates(res.available_dates);
+        }
+      })
+      .catch(() => {
+        setAllProfiles([]);
+      })
+      .finally(() => setLoading(false));
+  }, [selectedPlatform, setAvailableDates, setDatasetTemporalRange]);
 
-  const handleObsClick = (obs: ObservationPoint) => {
-    // Select the observation and show it in the panel.
-    // Do NOT auto-navigate to Research — user must explicitly choose Inspect.
+  const profiles = useMemo(() => {
+    if (!selectedDate) return allProfiles;
+    return allProfiles.filter((p: DatasetProfileSummary) => p.observation_time.startsWith(selectedDate));
+  }, [allProfiles, selectedDate]);
+
+  const handleProfileClick = (p: DatasetProfileSummary) => {
     selectResearchObservation({
-      id: obs.id,
-      location: { latitude: obs.latitude, longitude: obs.longitude },
-      date: obs.timestamp.substring(0, 10),
+      id: p.profile_id,
+      location: { latitude: p.latitude, longitude: p.longitude },
+      date: p.observation_time.substring(0, 10),
     });
   };
 
+  const activeVisual = getDatasetVisualConfig(selectedPlatform === 'ALL' ? 'ARGO' : selectedPlatform);
+
   return (
-    <div className="absolute left-3 top-3 z-10 pointer-events-auto">
-      <div className="w-[190px] max-h-[calc(100vh-100px)] overflow-y-auto" style={{ background: 'var(--os-surface)', border: '1px solid var(--os-border)' }}>
+    <div className="absolute left-3 top-3 z-10 pointer-events-auto font-mono">
+      <div className="w-[230px] max-h-[calc(100vh-100px)] overflow-y-auto rounded-lg shadow-2xl border border-slate-800 bg-[#070d18]/95 backdrop-blur-md">
         {/* Header */}
-        <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid var(--os-border)' }}>
-          <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'var(--os-text-3)' }}>Argo Profiles</span>
-          <span className="text-[11px] mono" style={{ color: 'var(--os-text-muted)' }}>{observations.length + RESEARCH_DATA_COVERAGE.length}</span>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 bg-[#040812]">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ background: activeVisual.hex }} />
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-200">
+              IN-SITU STATIONS
+            </span>
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-900 border border-slate-700 text-cyan-300">
+            {profiles.length}
+          </span>
+        </div>
+
+        {/* Platform selection pills */}
+        <div className="flex flex-wrap gap-1 p-1.5 border-b border-slate-800 bg-[#060a12] text-[9px]">
+          {(['ALL', 'ARGO', 'GLIDER', 'CTD', 'BGC'] as const).map((platKey) => {
+            const isSelected = selectedPlatform === platKey;
+            const meta = platKey === 'ALL' ? { hex: '#06b6d4', shortLabel: 'ALL' } : getDatasetVisualConfig(platKey);
+            return (
+              <button
+                key={platKey}
+                type="button"
+                id={`btn-map-plat-${platKey.toLowerCase()}`}
+                onClick={() => setSelectedPlatform(platKey)}
+                className={`px-1.5 py-0.5 rounded transition-colors cursor-pointer flex items-center gap-1 ${
+                  isSelected
+                    ? 'bg-slate-800 text-white font-bold border border-slate-600 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.hex }} />
+                <span>{platKey}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Dataset metadata & temporal extent banner */}
+        <div className="px-2.5 py-1.5 border-b border-slate-800/80 bg-[#03060c] text-[9px] text-slate-400 space-y-0.5">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500 uppercase">Coverage Range:</span>
+            <span className="text-cyan-300 font-bold">{temporalRange.start} → {temporalRange.end}</span>
+          </div>
+          <div className="flex justify-between items-center text-[8px] text-slate-500">
+            <span>Active Dataset:</span>
+            <span className="truncate max-w-[120px] text-slate-300">{selectedPlatform === 'ALL' ? 'Multi-Platform In-Situ' : activeVisual.label}</span>
+          </div>
         </div>
 
         {/* Fit button */}
-        <div className="px-2 py-1.5" style={{ borderBottom: '1px solid var(--os-border)' }}>
+        <div className="p-1.5 border-b border-slate-800 bg-[#050912]">
           <button
+            type="button"
             onClick={() => triggerFitAllObservations()}
-            className="w-full px-2 py-1.5 text-[11px] transition"
-            style={{
-              border: '1px solid var(--os-border)',
-              background: 'var(--os-bg)',
-              color: 'var(--os-text-2)',
-            }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLElement).style.borderColor = 'var(--os-border-light)';
-              (e.target as HTMLElement).style.color = 'var(--os-text)';
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.borderColor = 'var(--os-border)';
-              (e.target as HTMLElement).style.color = 'var(--os-text-2)';
-            }}
+            className="w-full py-1 text-[10px] rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
           >
-            Fit Observations
+            <span>Fit Active Extent ({profiles.length})</span>
           </button>
         </div>
 
-        {/* Stations */}
-        {observations.length > 0 && (
-          <div style={{ borderBottom: '1px solid var(--os-border)' }}>
-            <div className="px-2.5 py-1">
-              <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--os-text-3)' }}>Stations ({observations.length})</span>
-            </div>
-            <div className="px-2.5 pb-1.5">
-              {observations.map((obs) => {
-                const isSelected = selectedObservationId === obs.id;
+        {/* Real Stations List */}
+        <div className="p-1.5">
+          <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-800/60 text-[9px] text-slate-500 uppercase tracking-wider">
+            <span>REAL IN-SITU PROFILES</span>
+            <span>{loading ? 'LOADING...' : `${profiles.length} LOCATIONS`}</span>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto space-y-1">
+            {profiles.length > 0 ? (
+              profiles.map((p) => {
+                const isSelected = selectedObservationId === p.profile_id;
+                const visual = getDatasetVisualConfig(p.platform_type);
                 return (
                   <button
-                    key={obs.id}
-                    onClick={() => handleObsClick(obs)}
-                    className="flex w-full items-center gap-2 py-0.5 text-[12px] transition"
-                    style={{
-                      color: isSelected ? 'var(--os-selected)' : 'var(--os-text-2)',
-                      fontWeight: isSelected ? 500 : 400,
-                    }}
+                    key={p.profile_id}
+                    type="button"
+                    onClick={() => handleProfileClick(p)}
+                    className={`flex flex-col w-full text-left p-1.5 rounded transition cursor-pointer border ${
+                      isSelected
+                        ? 'bg-cyan-950/80 border-cyan-700 text-cyan-200'
+                        : 'bg-slate-900/50 hover:bg-slate-850 border-slate-800/80 text-slate-300'
+                    }`}
                   >
-                    <span
-                      className="h-2 w-2 rounded-sm shrink-0"
-                      style={{
-                        background: isSelected ? 'var(--os-selected)' : 'var(--os-argo)',
-                      }}
-                    />
-                    <span className="mono truncate">
-                      {obs.id.replace('argo_', '').replace('_', ' / ')}
-                    </span>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: visual.hex }} />
+                        <span className="font-bold truncate">
+                          {p.platform_type} {p.platform_id}
+                        </span>
+                      </div>
+                      <span className={`text-[8px] font-bold px-1 rounded border ${visual.badgeBgClass} ${visual.badgeTextClass} ${visual.badgeBorderClass}`}>
+                        {p.platform_type}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 mt-0.5">
+                      <span>{formatLatitude(p.latitude)} {formatLongitude(p.longitude)}</span>
+                      <span className="text-[8px] text-slate-500">{p.observation_time.substring(0, 10)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[8px] text-slate-500 mt-0.5">
+                      <span>Depth: 0–{Math.round(p.max_depth)} m</span>
+                      <span className="text-teal-400/90">{p.variables.slice(0, 3).join(', ')}</span>
+                    </div>
                   </button>
                 );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Coverage Sites */}
-        <div>
-          <div className="px-2.5 py-1">
-            <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--os-text-3)' }}>Coverage ({RESEARCH_DATA_COVERAGE.length})</span>
-          </div>
-          <div className="px-2.5 pb-1.5 max-h-36 overflow-y-auto">
-            {RESEARCH_DATA_COVERAGE.map((cov, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 py-px text-[11px]"
-                style={{ color: 'var(--os-text-muted)' }}
-              >
-                <span className="h-1.5 w-1.5 rounded-sm shrink-0" style={{ background: 'var(--os-text-muted)' }} />
-                <span className="mono">
-                  {formatLatitude(cov.latitude)} {formatLongitude(cov.longitude)}
-                </span>
+              })
+            ) : (
+              <div className="py-4 text-center text-slate-500 text-[10px]">
+                {loading ? 'Searching real station profiles...' : 'No in-situ stations found for this platform filter.'}
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

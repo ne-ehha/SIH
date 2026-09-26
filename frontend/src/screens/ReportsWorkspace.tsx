@@ -2,9 +2,63 @@ import React from 'react';
 import { Download, FileCode2, FileText } from 'lucide-react';
 import { useOceanStore } from '@/state/oceanStore';
 import { ResearchReport } from '@/components/reports/ResearchReport';
+import { useResearchVisualization3D } from '@/integration';
+import { exportProfileCSV, exportStatsCSV } from '@/utils/export';
 
 export const ReportsWorkspace: React.FC = () => {
-  const { selectedDate, selectedDepth, selectedVariable } = useOceanStore();
+  const {
+    selectedDate,
+    selectedTime,
+    selectedDepth,
+    selectedVariable,
+    selectedLocation,
+    selectedObservationId,
+  } = useOceanStore();
+
+  const { points, selectedProfilePoints, stats, unit } = useResearchVisualization3D({
+    latitude: selectedLocation?.latitude ?? null,
+    longitude: selectedLocation?.longitude ?? null,
+    variable: (selectedVariable === 'salinity' ? 'salinity' : 'temperature') as any,
+    date: selectedDate,
+    time: selectedTime,
+    selectedObservationId,
+    selectedDepth,
+    enabled: true,
+  });
+
+  const handleExportCSV = () => {
+    const dataToExport = selectedProfilePoints.length > 0 ? selectedProfilePoints : points;
+    if (dataToExport.length > 0) {
+      exportProfileCSV(dataToExport, selectedVariable, unit || '°C', `viadariya_${selectedVariable}_collocation_${selectedDate}.csv`);
+    } else if (stats) {
+      exportStatsCSV(stats, selectedVariable, unit || '°C');
+    }
+  };
+
+  const handleExportJSON = () => {
+    const dataToExport = selectedProfilePoints.length > 0 ? selectedProfilePoints : points;
+    const exportPayload = {
+      title: 'ViaDariya Scientific Collocation Report',
+      model: 'GLORYS12V1',
+      observation: 'Argo Delayed Mode',
+      region: 'Bay of Bengal',
+      period: 'January 2024',
+      variable: selectedVariable,
+      unit: unit || '°C',
+      date: selectedDate,
+      depth_window: '0-500 dbar',
+      difference_convention: 'GLORYS - Argo',
+      statistics: stats,
+      records: dataToExport,
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `viadariya_${selectedVariable}_collocation_${selectedDate}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#060a12] font-sans text-slate-200">
@@ -28,25 +82,25 @@ export const ReportsWorkspace: React.FC = () => {
           <aside className="h-fit border border-slate-800 bg-[#09101d] p-4">
             <h2 className="text-sm font-semibold text-slate-100">Scientific exports</h2>
             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-              Download the available collocation exports from the active OceanScope data service.
+              Download the verified collocation dataset directly with full scientific metadata.
             </p>
             <div className="mt-4 space-y-2">
-              <a
-                href="/api/v1/export/csv"
-                download
-                className="flex w-full items-center gap-2 border border-slate-700 bg-[#050912] px-3 py-2 text-left text-xs text-slate-200 transition-colors hover:border-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="flex w-full items-center gap-2 border border-slate-700 bg-[#050912] px-3 py-2 text-left text-xs text-slate-200 transition-colors hover:border-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 cursor-pointer"
               >
                 <Download className="h-4 w-4 shrink-0 text-emerald-400" />
                 <span><span className="block font-medium">Export CSV</span><span className="text-[10px] text-slate-500">Tabular collocation records</span></span>
-              </a>
-              <a
-                href="/api/v1/export/netcdf"
-                download
-                className="flex w-full items-center gap-2 border border-slate-700 bg-[#050912] px-3 py-2 text-left text-xs text-slate-200 transition-colors hover:border-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              </button>
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="flex w-full items-center gap-2 border border-slate-700 bg-[#050912] px-3 py-2 text-left text-xs text-slate-200 transition-colors hover:border-cyan-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 cursor-pointer"
               >
                 <FileCode2 className="h-4 w-4 shrink-0 text-cyan-400" />
-                <span><span className="block font-medium">Export NetCDF</span><span className="text-[10px] text-slate-500">Scientific dataset download</span></span>
-              </a>
+                <span><span className="block font-medium">Export Scientific JSON</span><span className="text-[10px] text-slate-500">Metadata & records package</span></span>
+              </button>
             </div>
           </aside>
         </div>

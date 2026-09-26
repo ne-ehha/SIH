@@ -50,11 +50,19 @@ function App() {
  * Application shell shared by the Launchpad and each workspace.
  */
 function PlatformLayout() {
+  const location = useLocation();
+  const setIsModelViewOpen = useOceanStore((s) => s.setIsModelViewOpen);
+
+  useEffect(() => {
+    // Unconditionally close any 3D modal/overlay on every route change
+    setIsModelViewOpen(false);
+  }, [location.pathname, setIsModelViewOpen]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-[#070c14] text-slate-200 overflow-hidden select-none font-sans">
       <Header />
       <main className="flex-1 min-h-0 w-full relative overflow-hidden flex flex-col">
-        <Outlet />
+        <Outlet key={location.pathname} />
       </main>
       <ModelViews />
     </div>
@@ -126,11 +134,15 @@ function SessionCheck() {
 // ── 3D model overlays (HYCOM operational stays separate from Research Mode) ──
 
 function ModelViews() {
+  const location = useLocation();
   const isModelViewOpen = useOceanStore((s) => s.isModelViewOpen);
   const selectedDate = useOceanStore((s) => s.selectedDate);
-  if (!isModelViewOpen) return null;
+
+  // HARD ROUTE GATE: ModelViews modal must NEVER mount on non-explore routes
+  if (!isModelViewOpen || location.pathname !== '/explore') return null;
+
   const isHycom = selectedDate >= HYCOM_DATE_START && selectedDate <= HYCOM_DATE_END;
-  return isHycom ? <Ocean3DView /> : <Research3DView />;
+  return isHycom ? <Ocean3DView /> : null;
 }
 
 export default App;

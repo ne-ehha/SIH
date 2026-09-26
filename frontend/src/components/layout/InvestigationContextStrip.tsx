@@ -5,7 +5,7 @@ import { variables } from '@/config/variables';
 import type { WorkspaceMode } from '@/types/ocean';
 
 const WORKSPACE_PURPOSE: Record<WorkspaceMode, { name: string; purpose: string }> = {
-  overview: { name: 'OCEANSCOPE', purpose: '' },
+  overview: { name: 'VIADARIYA', purpose: '' },
   globe: { name: 'GLOBE', purpose: 'DISCOVER' },
   research: { name: 'RESEARCH', purpose: 'INSPECT' },
   analysis: { name: 'ANALYSIS', purpose: 'COMPARE' },

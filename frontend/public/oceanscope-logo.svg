@@ -9,8 +9,8 @@
   <!-- Wave accent -->
   <path d="M10 28 Q16 22 22 28 Q28 34 34 28" stroke="#22d3ee" stroke-width="0.6" fill="none" opacity="0.4"/>
 
-  <!-- Wordmark: OceanScope -->
-  <text x="50" y="22" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#dce2ec" letter-spacing="0.5">OceanScope</text>
+  <!-- Wordmark: ViaDariya -->
+  <text x="50" y="22" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="17" font-weight="700" fill="#dce2ec" letter-spacing="0.5">ViaDariya</text>
 
   <!-- Tagline -->
   <text x="50" y="36" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="7.5" fill="#6b768c" letter-spacing="1.5" text-transform="uppercase">SEE DEEPER. UNDERSTAND BETTER.</text>

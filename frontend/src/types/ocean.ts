@@ -3,7 +3,24 @@ export interface Location {
   longitude: number;
 }
 
-export type OceanVariable = 'temperature' | 'salinity' | 'currents_u' | 'currents_v';
+export type OceanVariable =
+  | 'temperature'
+  | 'salinity'
+  | 'currents'
+  | 'currents_u'
+  | 'currents_v'
+  | 'uo'
+  | 'vo'
+  | 'current_speed'
+  | 'current_direction'
+  | 'thetao'
+  | 'so'
+  | 'chl'
+  | 'chlorophyll'
+  | 'o2'
+  | 'no3'
+  | 'zos'
+  | 'mlotst';
 
 export type ViewMode = 'explore' | 'compare' | 'discrepancies' | 'diagnostics' | 'solutions' | 'reports';
 

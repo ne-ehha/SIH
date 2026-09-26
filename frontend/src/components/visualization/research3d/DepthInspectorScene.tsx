@@ -47,6 +47,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { Research3DPoint } from '@/integration';
 import { findNearestResearchMeasurement } from '@/integration/researchSelection';
 import type { ColorScaleConfig } from '@/types/ocean';
+import { getDatasetVisualConfig } from '@/config/datasetVisualConfig';
 import {
   valueToRgb,
   valueToColor,
@@ -243,6 +244,12 @@ interface DepthInspectorSceneProps {
   /** Set false to suppress the synchronized colorbar (used by compact hosts). */
   showColorbar?: boolean;
   viewControlsRef?: MutableRefObject<InspectorViewControls | null>;
+  mode?: 'benchmark' | 'latest' | 'historical';
+  currentVectors?: Array<{ depth: number; u: number; v: number; speed: number; direction: number }>;
+  observationPlatform?: string;
+  observationLabel?: string;
+  modelLabel?: string;
+  maxDepthRef?: number;
 }
 
 export interface InspectorViewControls {
@@ -269,8 +276,8 @@ interface InspectorInitialView {
 /** Convert pressure (dbar) to Y scene coordinate (depth increases downward).
  *  verticalExaggeration stretches the water column vertically (SIH26067 control).
  *  It rescales the depth axis only — it never rescales or distorts data values. */
-function pressureToY(pressure: number, verticalExaggeration = 1): number {
-  return -(pressure / MAX_DEPTH_REF) * SCENE_DEPTH * verticalExaggeration;
+function pressureToY(pressure: number, verticalExaggeration = 1, maxDepthRef = MAX_DEPTH_REF): number {
+  return -(pressure / maxDepthRef) * SCENE_DEPTH * verticalExaggeration;
 }
 
 /**
@@ -726,19 +733,20 @@ function SurfacePlane() {
 }
 
 /** Translucent depth reference layers following inverted pyramid taper. */
-function DepthLayers({ verticalExaggeration = 1 }: { verticalExaggeration?: number }) {
+function DepthLayers({ verticalExaggeration = 1, maxDepthRef = MAX_DEPTH_REF }: { verticalExaggeration?: number; maxDepthRef?: number }) {
   const layers = useMemo(() => {
-    // 100m increments, excluding 0m (surface is the pyramid base) and 500m (apex).
-    // Geometry is declarative (<shapeGeometry>/<lineSegments>) so exaggeration
-    // changes rebuild through R3F's normal reconciliation — no leaked objects.
-    const depths = [100, 200, 300, 400];
+    const step = maxDepthRef <= 500 ? 100 : maxDepthRef <= 1000 ? 200 : 500;
+    const depths: number[] = [];
+    for (let d = step; d < maxDepthRef; d += step) {
+      depths.push(d);
+    }
     return depths.map((d) => {
-      const y = pressureToY(d, verticalExaggeration);
+      const y = pressureToY(d, verticalExaggeration, maxDepthRef);
       const hw = invertedPyramidHalfWidth(y, verticalExaggeration);
       const hz = invertedPyramidHalfZ(y, verticalExaggeration);
       return { depth: d, y, hw, hz };
     });
-  }, [verticalExaggeration]);
+  }, [verticalExaggeration, maxDepthRef]);
 
   return (
     <>
@@ -766,35 +774,24 @@ function DepthLayers({ verticalExaggeration = 1 }: { verticalExaggeration?: numb
 /**
  * Selected depth slice — brighter translucent plane at the slider depth.
  * Follows inverted pyramid taper at the exact slider depth.
- *
- * Robustness (blank-screen fix): the slice plane is rebuilt declaratively on
- * every depth change. Creating fresh THREE objects and passing them through
- * <primitive> at slider-drag rate forces R3F to reconstruct instances while
- * the same objects are still attached in the scene graph — a known source of
- * runtime exceptions. Plain <mesh>/<lineSegments> elements let R3F handle
- * attachment, disposal and reconciliation safely.
  */
 function SelectedDepthSlice({
   selectedDepth,
   verticalExaggeration = 1,
   visible = true,
   opacity = 1,
+  maxDepthRef = MAX_DEPTH_REF,
 }: {
   selectedDepth: number;
   verticalExaggeration?: number;
   visible?: boolean;
   opacity?: number;
+  maxDepthRef?: number;
 }) {
-  // Churn-free geometry: one unit square (fill + outline) created once, then
-  // positioned/scaled per depth. Scale and position are pure matrix updates —
-  // dragging the slider never rebuilds or re-attaches GPU buffers.
-  // (Hooks stay above the early return — rules-of-hooks.)
   const unitFill = useMemo(() => new THREE.ShapeGeometry(createUnitSquareShape()), []);
   const unitOutline = useMemo(() => createUnitSquareOutline(), []);
 
-  // Safe geometry inputs: finite depth, positive half-extents. An invalid
-  // input renders nothing — never an invalid Three.js geometry.
-  const y = pressureToY(selectedDepth, verticalExaggeration);
+  const y = pressureToY(selectedDepth, verticalExaggeration, maxDepthRef);
   const hw = invertedPyramidHalfWidth(y, verticalExaggeration);
   const hz = invertedPyramidHalfZ(y, verticalExaggeration);
   const geometryValid =
@@ -843,9 +840,17 @@ function SelectedDepthSlice({
   );
 }
 
-/** Depth reference scale — vertical axis with labels at 0–500m. */
-function DepthScale({ selectedDepth, verticalExaggeration = 1 }: { selectedDepth: number; verticalExaggeration?: number }) {
-  const depths = [0, 100, 200, 300, 400, 500];
+/** Depth reference scale — vertical axis with labels at 0–maxDepthRef m. */
+function DepthScale({ selectedDepth, verticalExaggeration = 1, maxDepthRef = MAX_DEPTH_REF }: { selectedDepth: number; verticalExaggeration?: number; maxDepthRef?: number }) {
+  const depths = useMemo(() => {
+    const step = maxDepthRef <= 500 ? 100 : maxDepthRef <= 1000 ? 200 : 500;
+    const arr: number[] = [0];
+    for (let d = step; d < maxDepthRef; d += step) {
+      arr.push(d);
+    }
+    arr.push(maxDepthRef);
+    return arr;
+  }, [maxDepthRef]);
   const x = -(PYRAMID_SURFACE_HALF_WIDTH + 0.48);
 
   const lineGeometry = useMemo(() => {
@@ -857,7 +862,7 @@ function DepthScale({ selectedDepth, verticalExaggeration = 1 }: { selectedDepth
   }, [x, verticalExaggeration]);
 
   // Selected depth marker on the axis
-  const markerY = pressureToY(selectedDepth, verticalExaggeration);
+  const markerY = pressureToY(selectedDepth, verticalExaggeration, maxDepthRef);
 
   return (
     <group>
@@ -866,7 +871,7 @@ function DepthScale({ selectedDepth, verticalExaggeration = 1 }: { selectedDepth
       </lineSegments>
 
       {depths.map((d) => {
-        const y = pressureToY(d, verticalExaggeration);
+        const y = pressureToY(d, verticalExaggeration, maxDepthRef);
         return (
           <group key={d} position={[x, y, 0]}>
             <mesh>
@@ -1057,12 +1062,16 @@ function MeasurementPoint({
             <div>
               Depth: <strong>{p.pressure.toFixed(1)}</strong> dbar
             </div>
-            <div style={{ color }}>
-              {variable} ({profileLabel}): <strong>{profileLabel === 'Argo' ? p.argoValue.toFixed(3) : p.glorysValue.toFixed(3)}</strong> {unit}
-            </div>
-            <div style={{ color: '#f59e0b' }}>
-              Diff: {p.difference > 0 ? '+' : ''}{p.difference.toFixed(4)} {unit}
-            </div>
+            {Number.isFinite(profileLabel === 'GLORYS' ? p.glorysValue : p.argoValue) && (
+              <div style={{ color }}>
+                {variable} ({profileLabel}): <strong>{(profileLabel === 'GLORYS' ? p.glorysValue : p.argoValue).toFixed(3)}</strong> {unit}
+              </div>
+            )}
+            {Number.isFinite(p.difference) && (
+              <div style={{ color: '#f59e0b' }}>
+                Diff: {p.difference > 0 ? '+' : ''}{p.difference.toFixed(4)} {unit}
+              </div>
+            )}
           </div>
         </Html>
       )}
@@ -1239,6 +1248,12 @@ function InspectorScene({
   colorScale,
   renderMode = 'variables',
   layers = DEFAULT_SCENE_LAYERS,
+  mode = 'benchmark',
+  currentVectors,
+  observationPlatform = 'ARGO',
+  observationLabel,
+  modelLabel,
+  maxDepthRef = MAX_DEPTH_REF,
 }: {
   profilePoints: Research3DPoint[];
   unit: string;
@@ -1248,11 +1263,28 @@ function InspectorScene({
   colorScale?: ColorScaleConfig;
   renderMode?: FieldRenderMode;
   layers?: SceneLayers;
+  mode?: 'benchmark' | 'latest' | 'historical';
+  currentVectors?: Array<{ depth: number; u: number; v: number; speed: number; direction: number }>;
+  observationPlatform?: string;
+  observationLabel?: string;
+  modelLabel?: string;
+  maxDepthRef?: number;
 }) {
+  const obsConfig = useMemo(() => getDatasetVisualConfig(observationPlatform || 'ARGO'), [observationPlatform]);
+  const modConfig = useMemo(() => getDatasetVisualConfig(modelLabel || obsConfig.referenceModel || 'GLORYS'), [modelLabel, obsConfig]);
+
+  const obsColor = obsConfig.primaryColor || obsConfig.color || '#22d3ee';
+  const modColor = modConfig.primaryColor || modConfig.color || '#a855f7';
+  const obsLabel = observationLabel || obsConfig.label || 'Argo';
+  const modLabel = modelLabel || obsConfig.referenceModel || obsConfig.defaultReferenceModel || 'GLORYS';
   const sorted = useMemo(
     () => [...profilePoints].sort((a, b) => a.pressure - b.pressure),
     [profilePoints],
   );
+
+  const hasModel = useMemo(() => {
+    return sorted.some((p) => Number.isFinite(p.glorysValue) && Math.abs(p.glorysValue) < 1e10);
+  }, [sorted]);
 
   // Canonical color-scale resolution — the SAME config drives every 3D color
   // and the synchronized colorbar rendered alongside the scene.
@@ -1268,7 +1300,7 @@ function InspectorScene({
     if (!fieldConfig) return null;
     return sorted.map((point) => ({
       argo: valueToRgb(point.argoValue, fieldConfig),
-      glorys: valueToRgb(point.glorysValue, fieldConfig),
+      glorys: Number.isFinite(point.glorysValue) ? valueToRgb(point.glorysValue, fieldConfig) : [0.5, 0.5, 0.5] as [number, number, number],
       difference: valueToRgb(point.difference, fieldConfig),
     }));
   }, [sorted, fieldConfig]);
@@ -1283,11 +1315,11 @@ function InspectorScene({
       const offset = profileOffsets.get(`${point.platformNumber}:${point.cycleNumber}`) ?? 0;
       return ({
         point,
-        y: pressureToY(point.pressure, verticalExaggeration),
-        argoX: -ARGO_X_OFFSET + offset,
+        y: pressureToY(point.pressure, verticalExaggeration, maxDepthRef),
+        argoX: hasModel ? -ARGO_X_OFFSET + offset : offset,
         glorysX: GLORYS_X_OFFSET + offset,
       });
-    }), [sorted, verticalExaggeration, profileOffsets],
+    }), [sorted, verticalExaggeration, profileOffsets, hasModel, maxDepthRef],
   );
   const profileRecordGroups = useMemo(() => {
     const groups = new Map<string, PositionedRecord[]>();
@@ -1333,33 +1365,42 @@ function InspectorScene({
       <SurfacePlane />
 
       {/* Depth reference layers (translucent, following pyramid taper) */}
-      <DepthLayers verticalExaggeration={verticalExaggeration} />
+      <DepthLayers verticalExaggeration={verticalExaggeration} maxDepthRef={maxDepthRef} />
 
       {/* Selected depth slice (interactive, brighter) — real layer control */}
       <SelectedDepthSlice
         selectedDepth={selectedDepth}
         verticalExaggeration={verticalExaggeration}
+        maxDepthRef={maxDepthRef}
         visible={layers.depthSlice.visible}
         opacity={layers.depthSlice.opacity}
       />
 
       {/* Depth scale with selected-depth marker */}
-      <DepthScale selectedDepth={selectedDepth} verticalExaggeration={verticalExaggeration} />
+      <DepthScale selectedDepth={selectedDepth} verticalExaggeration={verticalExaggeration} maxDepthRef={maxDepthRef} />
 
-      {/* Argo profile — visibility + opacity from the canonical layer manager;
-          color from the canonical color scale (identity colors when unset). */}
+      {/* Argo / Observed in-situ profile — visibility + opacity from the canonical layer manager */}
       {layers.argo.visible && (
         <>
-          {profileRecordGroups.map((group) => <ProfileLine key={`argo-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`} records={group} xPosition={group[0]?.argoX ?? -ARGO_X_OFFSET} color={fieldConfig ? undefined : ARGO_COLOR} colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].argo) : null} opacity={layers.argo.opacity} />)}
+          {profileRecordGroups.map((group) => (
+            <ProfileLine
+              key={`argo-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`}
+              records={group}
+              xPosition={group[0]?.argoX ?? (hasModel ? -ARGO_X_OFFSET : 0)}
+              color={fieldConfig ? undefined : obsColor}
+              colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].argo) : null}
+              opacity={layers.argo.opacity}
+            />
+          ))}
           {records.map((r, i) => (
             <MeasurementPoint
               key={`argo-${i}`}
               record={r}
               xPosition={r.argoX}
-              color={fieldConfig ? valueToColor(r.point.argoValue, fieldConfig) : ARGO_COLOR}
+              color={fieldConfig ? valueToColor(r.point.argoValue, fieldConfig) : obsColor}
               unit={unit}
               variable={variable}
-              profileLabel="Argo"
+              profileLabel={mode === 'latest' ? `Live ${obsLabel}` : obsLabel}
               isHighlighted={i === highlightedIndex}
               opacityOverride={layers.argo.opacity}
             />
@@ -1367,19 +1408,28 @@ function InspectorScene({
         </>
       )}
 
-      {/* GLORYS profile — same canonical wiring as Argo */}
-      {layers.glorys.visible && (
+      {/* GLORYS profile — rendered only when model data is present */}
+      {hasModel && layers.glorys.visible && (
         <>
-          {profileRecordGroups.map((group) => <ProfileLine key={`glorys-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`} records={group} xPosition={group[0]?.glorysX ?? GLORYS_X_OFFSET} color={fieldConfig ? undefined : GLORYS_COLOR} colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].glorys) : null} opacity={layers.glorys.opacity} />)}
+          {profileRecordGroups.map((group) => (
+            <ProfileLine
+              key={`glorys-line-${group[0]?.point.platformNumber}-${group[0]?.point.cycleNumber}`}
+              records={group}
+              xPosition={group[0]?.glorysX ?? GLORYS_X_OFFSET}
+              color={fieldConfig ? undefined : modColor}
+              colorFromValues={recordColors ? group.map((record) => recordColors[records.indexOf(record)].glorys) : null}
+              opacity={layers.glorys.opacity}
+            />
+          ))}
           {records.map((r, i) => (
             <MeasurementPoint
               key={`glorys-${i}`}
               record={r}
               xPosition={r.glorysX}
-              color={fieldConfig ? valueToColor(r.point.glorysValue, fieldConfig) : GLORYS_COLOR}
+              color={fieldConfig && Number.isFinite(r.point.glorysValue) ? valueToColor(r.point.glorysValue, fieldConfig) : modColor}
               unit={unit}
               variable={variable}
-              profileLabel="GLORYS"
+              profileLabel={modLabel}
               isHighlighted={i === highlightedIndex}
               opacityOverride={layers.glorys.opacity}
             />
@@ -1387,10 +1437,8 @@ function InspectorScene({
         </>
       )}
 
-      {/* Difference indicators — the Discrepancies layer (GLORYS − Argo).
-          In difference mode the bars take palette colors; in variables mode
-          they keep the amber/blue identity semantics (model high / model low). */}
-      {layers.discrepancies.visible && (
+      {/* Difference indicators — rendered only when model comparison is present */}
+      {hasModel && layers.discrepancies.visible && (
         <>
           {records.map((r, i) => (
             <DifferenceIndicator
@@ -1408,6 +1456,36 @@ function InspectorScene({
         </>
       )}
 
+      {/* Horizontal current vector arrows if dynamic current data is present */}
+      {currentVectors && currentVectors.length > 0 && (
+        <group>
+          {currentVectors.map((vec, idx) => {
+            const y = pressureToY(vec.depth, verticalExaggeration, maxDepthRef);
+            const rad = (vec.direction * Math.PI) / 180;
+            const len = Math.min(Math.max(vec.speed * 0.8, 0.2), 1.2);
+            const dx = Math.sin(rad) * len;
+            const dz = -Math.cos(rad) * len;
+            return (
+              <group key={`cur-vec-${idx}`} position={[0, y, 0]}>
+                <line>
+                  <bufferGeometry
+                    attach="geometry"
+                    onUpdate={(self) => {
+                      self.setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(dx, 0, dz)]);
+                    }}
+                  />
+                  <lineBasicMaterial color="#38bdf8" />
+                </line>
+                <mesh position={[dx, 0, dz]} rotation={[0, -rad + Math.PI / 2, 0]}>
+                  <coneGeometry args={[0.04, 0.12, 8]} />
+                  <meshBasicMaterial color="#38bdf8" />
+                </mesh>
+              </group>
+            );
+          })}
+        </group>
+      )}
+
       {/* Selected observation anchor at surface */}
       {records.length > 0 && (
         <ObservationAnchor firstRecord={records[0]} />
@@ -1415,7 +1493,7 @@ function InspectorScene({
 
       {/* Selected depth info panel */}
       {nearestRecord && (
-        <Html position={[ARGO_X_OFFSET + 0.6, nearestRecord.y, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={[hasModel ? ARGO_X_OFFSET + 0.6 : 0.8, nearestRecord.y, 0]} style={{ pointerEvents: 'none' }}>
           <div
             style={{
               background: 'rgba(10, 14, 26, 0.92)',
@@ -1432,22 +1510,40 @@ function InspectorScene({
             <div style={{ color: '#64748b', fontSize: '8px', marginBottom: '2px' }}>
               Selected: {selectedDepth}m → Nearest: {nearestRecord.point.pressure.toFixed(1)} dbar
             </div>
-            <div style={{ color: ARGO_COLOR }}>
-              Argo {variable}: <strong>{nearestRecord.point.argoValue.toFixed(3)}</strong> {unit}
-            </div>
-            <div style={{ color: GLORYS_COLOR }}>
-              GLORYS {variable}: <strong>{nearestRecord.point.glorysValue.toFixed(3)}</strong> {unit}
-            </div>
-            <div style={{ color: '#f59e0b' }}>
-              Diff: {nearestRecord.point.difference > 0 ? '+' : ''}{nearestRecord.point.difference.toFixed(4)} {unit}
-            </div>
+            {Number.isFinite(nearestRecord.point.argoValue) && (
+              <div style={{ color: obsColor }}>
+                {mode === 'latest' ? `Live ${obsLabel}` : obsLabel} {variable}: <strong>{nearestRecord.point.argoValue.toFixed(3)}</strong> {unit}
+              </div>
+            )}
+            {hasModel && Number.isFinite(nearestRecord.point.glorysValue) && (
+              <>
+                <div style={{ color: modColor }}>
+                  {mode === 'latest' ? 'Copernicus' : modLabel} {variable}: <strong>{nearestRecord.point.glorysValue.toFixed(3)}</strong> {unit}
+                </div>
+                {Number.isFinite(nearestRecord.point.difference) && (
+                  <div style={{ color: '#f59e0b' }}>
+                    Diff: {nearestRecord.point.difference > 0 ? '+' : ''}{nearestRecord.point.difference.toFixed(4)} {unit}
+                  </div>
+                )}
+              </>
+            )}
+            {!hasModel && (
+              <div style={{ color: '#94a3b8', fontSize: '8px' }}>
+                {obsLabel} {platformNumber} {cycleNumber ? `· Cycle ${cycleNumber} ` : ''}· In-Situ Observation
+              </div>
+            )}
+            {!Number.isFinite(nearestRecord.point.argoValue) && Number.isFinite(nearestRecord.point.glorysValue) && (
+              <div style={{ color: '#64748b', fontSize: '8px' }}>
+                In-situ {variable} not measured on {obsLabel}
+              </div>
+            )}
           </div>
         </Html>
       )}
 
       {/* No nearby measurement message */}
       {!nearestRecord && records.length > 0 && (
-        <Html position={[0, pressureToY(selectedDepth, verticalExaggeration), 0]} center style={{ pointerEvents: 'none' }}>
+        <Html position={[0, pressureToY(selectedDepth, verticalExaggeration, maxDepthRef), 0]} center style={{ pointerEvents: 'none' }}>
           <div
             style={{
               background: 'rgba(10, 14, 26, 0.85)',
@@ -1478,11 +1574,21 @@ function InspectorScene({
             textAlign: 'center',
           }}
         >
-          <span style={{ color: ARGO_COLOR }}>Argo</span>
-          {' vs '}
-          <span style={{ color: GLORYS_COLOR }}>GLORYS</span>
-          {' — '}
-          {records.length} records — {platformNumber}/{cycleNumber}
+          {hasModel ? (
+            <>
+              <span style={{ color: obsColor }}>{obsLabel}</span>
+              {' vs '}
+              <span style={{ color: modColor }}>{modLabel}</span>
+              {' — '}
+              {records.length} records — {platformNumber}{cycleNumber ? `/${cycleNumber}` : ''}
+            </>
+          ) : (
+            <>
+              <span style={{ color: obsColor }}>{mode === 'latest' ? `LIVE ${obsLabel.toUpperCase()}` : `${obsLabel.toUpperCase()} IN-SITU`}</span>
+              {' — '}
+              Platform {platformNumber} {cycleNumber ? `· Cycle ${cycleNumber} ` : ''}({records.length} levels)
+            </>
+          )}
         </div>
       </Html>
 
@@ -1505,7 +1611,21 @@ export function DepthInspectorScene({
   layers,
   showColorbar = true,
   viewControlsRef,
+  mode = 'benchmark',
+  currentVectors,
+  observationPlatform = 'ARGO',
+  observationLabel,
+  modelLabel,
+  maxDepthRef = MAX_DEPTH_REF,
 }: DepthInspectorSceneProps) {
+  useEffect(() => {
+    console.log('[3D] MOUNT');
+    console.log('[ROUTE]', window.location.pathname);
+    return () => {
+      console.log('[3D] UNMOUNT');
+    };
+  }, []);
+
   const hasData = profilePoints.length > 0;
   const [initialView] = useState<InspectorInitialView>(() => {
     const targetY = -(SCENE_DEPTH * verticalExaggeration) / 2;
@@ -1574,6 +1694,12 @@ export function DepthInspectorScene({
               colorScale={colorScale}
               renderMode={renderMode}
               layers={layers}
+              mode={mode}
+              currentVectors={currentVectors}
+              observationPlatform={observationPlatform}
+              observationLabel={observationLabel}
+              modelLabel={modelLabel}
+              maxDepthRef={maxDepthRef}
             />
           </SceneErrorBoundary>
         ) : (

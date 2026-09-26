@@ -42,7 +42,7 @@ export function exportProfileCSV(
   ]);
 
   const csvContent = [
-    '# OceanScope Scientific Data Export',
+    '# ViaDariya Scientific Data Export',
     `# Variable: ${variable} (${unit})`,
     '# Model: GLORYS12V1',
     '# Observation: Argo Delayed Mode',
@@ -50,13 +50,13 @@ export function exportProfileCSV(
     '# Period: January 2024',
     '# Difference: GLORYS - Argo',
     '# Collocation: 0.25° grid, daily nearest-neighbour',
-    '# Exported from OceanScope',
+    '# Exported from ViaDariya',
     '',
     headers.join(','),
     ...rows.map((r) => r.join(',')),
   ].join('\n');
 
-  downloadFile(csvContent, filename || `oceanscope_${variable}_profile.csv`, 'text/csv');
+  downloadFile(csvContent, filename || `viadariya_${variable}_profile.csv`, 'text/csv');
 }
 
 /**
@@ -89,15 +89,15 @@ export function exportComparisonCSV(
   ];
 
   const csvContent = [
-    '# OceanScope Comparison Export',
+    '# ViaDariya Comparison Export',
     `# Variable: ${variable}`,
-    '# Exported from OceanScope',
+    '# Exported from ViaDariya',
     '',
     headers.join(','),
     ...rows.map((r) => r.join(',')),
   ].join('\n');
 
-  downloadFile(csvContent, `oceanscope_${variable}_comparison.csv`, 'text/csv');
+  downloadFile(csvContent, `viadariya_${variable}_comparison.csv`, 'text/csv');
 }
 
 /**
@@ -134,15 +134,15 @@ export function exportStatsCSV(
   ];
 
   const csvContent = [
-    '# OceanScope Research Statistics Export',
+    '# ViaDariya Research Statistics Export',
     `# Variable: ${variable}`,
-    '# Exported from OceanScope',
+    '# Exported from ViaDariya',
     '',
     headers.join(','),
     ...rows.map((r) => r.join(',')),
   ].join('\n');
 
-  downloadFile(csvContent, `oceanscope_${variable}_stats.csv`, 'text/csv');
+  downloadFile(csvContent, `viadariya_${variable}_stats.csv`, 'text/csv');
 }
 
 function downloadFile(content: string, filename: string, mimeType: string): void {

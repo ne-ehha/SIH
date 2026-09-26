@@ -15,15 +15,15 @@ export function AboutPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="About OceanScope"
+        title="About ViaDariya"
         purpose="Platform"
-        description="OceanScope is a marine model-verification research platform for comparing ocean-model output against real observations — purpose-built for scientific investigation, not generic dashboards."
+        description="ViaDariya is a marine model-verification research platform for comparing ocean-model output against real observations — purpose-built for scientific investigation, not generic dashboards."
         breadcrumb={<Link to="/" className="text-[11px]" style={{ color: 'var(--os-text-3)' }}>← Workspace Home</Link>}
       />
 
       <SectionCard title="Purpose" className="mb-5">
         <p className="text-[12px] leading-relaxed" style={{ color: 'var(--os-text-2)' }}>
-          OceanScope lets researchers collocate an ocean reanalysis with in-situ float
+          ViaDariya lets researchers collocate an ocean reanalysis with in-situ float
           observations, inspect individual profiles, quantify model–observation differences,
           and carry out evidence-based diagnostics — with every scientific value traceable to
           a real API response. The platform is an SIH research/demo prototype for ocean-model

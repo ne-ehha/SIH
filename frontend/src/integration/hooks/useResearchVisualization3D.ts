@@ -100,29 +100,48 @@ export function useResearchVisualization3D({
     fetchData();
   }, [fetchData]);
 
-  // Filter to the selected Argo profile by platformNumber + cycleNumber.
-  // Observation IDs follow the format "argo_{platformNumber}_{cycleNumber}"
-  // e.g. "argo_1902669_12". The research API returns cycleNumber as "12.0"
-  // while observations endpoint uses "12", so matching must be numeric.
+  // Robust profile matching across all platforms (Argo, BGC, Glider, CTD)
   const selectedProfilePoints = useMemo<Research3DPoint[]>(() => {
-    if (!selectedObservationId) return [];
     if (points.length === 0) return [];
 
-    const parts = selectedObservationId.split('_');
-    // parts: ['argo', platformNumber, cycleNumber]
-    if (parts.length < 3) return [];
+    if (selectedObservationId) {
+      const cleanId = selectedObservationId.replace(/^(latest_|argo_|bgc_argo_|glider_|ctd_)/i, '');
+      const tokens = cleanId.split('_');
+      const targetPlatform = tokens[0];
+      const targetCycleStr = tokens[tokens.length - 1].replace(/\D/g, '');
+      const targetCycle = targetCycleStr ? parseFloat(targetCycleStr) : NaN;
 
-    const targetPlatform = parts[1];
-    const targetCycle = parseFloat(parts[2]);
-    if (isNaN(targetCycle)) return [];
+      const matched = points.filter((p) => {
+        const platMatch =
+          p.platformNumber === targetPlatform ||
+          p.platformNumber.includes(targetPlatform) ||
+          targetPlatform.includes(p.platformNumber);
+        if (!platMatch) return false;
+        if (!isNaN(targetCycle)) {
+          return Math.abs(parseFloat(p.cycleNumber) - targetCycle) < 0.1;
+        }
+        return true;
+      });
 
-    return points.filter((p) => {
-      return (
-        p.platformNumber === targetPlatform &&
-        parseFloat(p.cycleNumber) === targetCycle
-      );
-    });
-  }, [points, selectedObservationId]);
+      if (matched.length > 0) return matched;
+    }
+
+    // Fallback: match by proximity to selected coordinate
+    if (latitude !== null && longitude !== null) {
+      const closest = points.reduce((best, curr) => {
+        const dCurr = Math.hypot(curr.latitude - latitude, curr.longitude - longitude);
+        const dBest = Math.hypot(best.latitude - latitude, best.longitude - longitude);
+        return dCurr < dBest ? curr : best;
+      }, points[0]);
+      if (closest && Math.hypot(closest.latitude - latitude, closest.longitude - longitude) < 1.5) {
+        return points.filter(
+          (p) => p.platformNumber === closest.platformNumber && p.cycleNumber === closest.cycleNumber
+        );
+      }
+    }
+
+    return [];
+  }, [points, selectedObservationId, latitude, longitude]);
 
   const selectedMeasurement = useMemo(
     () => findNearestResearchMeasurement(selectedProfilePoints, selectedDepth),

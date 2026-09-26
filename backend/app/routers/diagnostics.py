@@ -57,7 +57,12 @@ def _analyze_patterns(variable: str, latitude: float, longitude: float) -> dict:
     lats = ds["latitude"].values
     lons = ds["longitude"].values
     dists = np.sqrt((lats - latitude) ** 2 + (lons - longitude) ** 2)
-    nearby_mask = dists < 1.0  # Within 1 degree
+    nearby_mask = dists < 1.5  # Within 1.5 degrees
+
+    if nearby_mask.sum() == 0:
+        min_dist = float(np.min(dists))
+        if min_dist < 6.0:
+            nearby_mask = dists <= (min_dist + 0.5)
 
     if nearby_mask.sum() == 0:
         return {

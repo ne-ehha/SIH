@@ -46,12 +46,21 @@ export function endSession(): void {
 }
 
 export async function authenticate(identifier: string, password: string): Promise<'success' | 'invalid' | 'unavailable'> {
+  let response: Response;
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+    response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier, password }),
     });
+  } catch {
+    return 'unavailable';
+  }
+
+  try {
+    if (response.status === 401) {
+      return 'invalid';
+    }
     const payload = await response.json() as LoginResponse;
     if (response.ok && payload.status === 'success' && payload.data?.accessToken && payload.data.profile) {
       startAuthenticatedSession({ accessToken: payload.data.accessToken, ...payload.data.profile });
@@ -59,7 +68,7 @@ export async function authenticate(identifier: string, password: string): Promis
     }
     return 'invalid';
   } catch {
-    return 'unavailable';
+    return 'invalid';
   }
 }
 

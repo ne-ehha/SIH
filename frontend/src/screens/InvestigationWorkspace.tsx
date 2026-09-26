@@ -87,7 +87,7 @@ export const InvestigationWorkspace: React.FC = () => {
           </div>
 
           <div className="mt-4 border-t border-slate-800 pt-3 text-[10px] leading-relaxed text-slate-500">
-            Notes are researcher-authored records for this session; OceanScope does not issue operational directives.
+            Notes are researcher-authored records for this session; ViaDariya does not issue operational directives.
           </div>
         </aside>
       </main>

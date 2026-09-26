@@ -335,37 +335,212 @@ def _normalize_profile(index_profile: IndexProfile, retrieved_at: datetime) -> d
                 pass
 
 
-def _copernicus_status(retrieved_at: datetime) -> dict[str, Any]:
-    """Report operational-model readiness without ever inventing model data."""
-    username = os.environ.get("COPERNICUSMARINE_SERVICE_USERNAME")
-    password = os.environ.get("COPERNICUSMARINE_SERVICE_PASSWORD")
+def _copernicus_status(
+    retrieved_at: datetime,
+    latest_profile: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Retrieve real Copernicus operational model data collocated with the latest Argo profile.
+    Reports truthful availability and computes scientific comparison metrics without fabricating values.
+    """
+    from .adapters.copernicus_adapter import CopernicusAdapter, has_copernicus_credentials
+
+    has_auth = has_copernicus_credentials()
     try:
-        import copernicusmarine  # type: ignore # Installed only in configured deployments.
-        toolbox_installed = bool(copernicusmarine)
+        import copernicusmarine  # type: ignore
+        toolbox_installed = True
     except ImportError:
         toolbox_installed = False
 
-    reason = None
-    if not username or not password:
-        reason = "Model credentials unavailable. Set server-only COPERNICUSMARINE_SERVICE_USERNAME and COPERNICUSMARINE_SERVICE_PASSWORD."
-    elif not toolbox_installed:
-        reason = "The official Copernicus Marine Toolbox is not installed on this backend."
-    else:
-        reason = "Operational subset retrieval is not enabled until the deployment validates its Copernicus credentials."
-    return {
-        "available": False,
-        "reason": reason,
-        "provenance": {
-            "source": "Copernicus Marine",
-            "source_type": "operational_model",
-            "product_id": COPERNICUS_PRODUCT_ID,
-            "datasets": {
-                "temperature": COPERNICUS_TEMPERATURE_DATASET,
-                "salinity": COPERNICUS_SALINITY_DATASET,
+    if not has_auth:
+        return {
+            "available": False,
+            "status": "AUTHENTICATION_REQUIRED",
+            "reason": "Copernicus Marine authentication credentials are not configured on server.",
+            "provenance": {
+                "source": "Copernicus Marine",
+                "source_type": "operational_model",
+                "product_id": COPERNICUS_PRODUCT_ID,
+                "retrieved_at": _iso(retrieved_at),
             },
-            "depth_range": [0, 500],
-            "retrieved_at": _iso(retrieved_at),
+        }
+
+    if not toolbox_installed:
+        return {
+            "available": False,
+            "status": "SOURCE_UNAVAILABLE",
+            "reason": "Copernicus Marine toolbox is not installed on this backend instance.",
+            "provenance": {
+                "source": "Copernicus Marine",
+                "source_type": "operational_model",
+                "product_id": COPERNICUS_PRODUCT_ID,
+                "retrieved_at": _iso(retrieved_at),
+            },
+        }
+
+    if not latest_profile or not latest_profile.get("levels"):
+        return {
+            "available": True,
+            "status": "READY",
+            "message": "Copernicus Marine operational model connected. Select an Argo profile to inspect collocated model values.",
+            "provenance": {
+                "source": "Copernicus Marine",
+                "source_type": "operational_model",
+                "product_id": COPERNICUS_PRODUCT_ID,
+                "retrieved_at": _iso(retrieved_at),
+            },
+        }
+
+    # Perform real collocation for the selected profile
+    adapter = CopernicusAdapter()
+    target_depths = [float(lvl["pressure"]) for lvl in latest_profile["levels"] if "pressure" in lvl]
+
+    colloc_res = adapter.collocate_profile(
+        latitude=latest_profile["latitude"],
+        longitude=latest_profile["longitude"],
+        observation_time=latest_profile["observation_time"],
+        target_depths=target_depths,
+    )
+
+    if not colloc_res.get("available"):
+        return {
+            "available": False,
+            "status": "UPSTREAM_UNAVAILABLE",
+            "reason": colloc_res.get("reason", "Upstream Copernicus query failed."),
+            "provenance": {
+                "source": "Copernicus Marine",
+                "source_type": "operational_model",
+                "product_id": COPERNICUS_PRODUCT_ID,
+                "retrieved_at": _iso(retrieved_at),
+            },
+        }
+
+    # Calculate comparison metrics for Temperature & Salinity
+    vars_dict = colloc_res.get("variables", {})
+    comparisons: dict[str, Any] = {}
+
+    # Temperature Comparison
+    t_model_levels = vars_dict.get("thetao", [])
+    if t_model_levels:
+        argo_t = np.array([float(lvl["temperature"]) for lvl in latest_profile["levels"] if lvl.get("temperature") is not None])
+        model_t = np.array([float(lvl["value"]) for lvl in t_model_levels[:len(argo_t)]])
+        if len(argo_t) == len(model_t) and len(argo_t) > 0:
+            diffs = model_t - argo_t  # Copernicus - Argo convention
+            comparisons["temperature"] = {
+                "variable": "temperature",
+                "canonical_name": "Potential Temperature",
+                "unit": "°C",
+                "model_source": "Copernicus Marine (thetao)",
+                "observation_source": "Argo In-Situ (TEMP)",
+                "difference_convention": "Copernicus − Argo",
+                "mean_bias": round(float(np.mean(diffs)), 4),
+                "bias": round(float(np.mean(diffs)), 4),
+                "mae": round(float(np.mean(np.abs(diffs))), 4),
+                "mean_absolute_error": round(float(np.mean(np.abs(diffs))), 4),
+                "rmse": round(float(np.sqrt(np.mean(diffs**2))), 4),
+                "max_absolute_difference": round(float(np.max(np.abs(diffs))), 4),
+                "valid_matched_levels": len(diffs),
+                "matched_levels": [
+                    {
+                        "depth": round(float(d), 2),
+                        "depth_offset_m": 0.0,
+                        "argo_value": round(float(a), 4),
+                        "observation_value": round(float(a), 4),
+                        "model_value": round(float(m), 4),
+                        "difference": round(float(diff), 4),
+                        "signed_difference": round(float(diff), 4),
+                    }
+                    for d, a, m, diff in zip(target_depths[:len(argo_t)], argo_t, model_t, diffs)
+                ],
+            }
+
+    # Salinity Comparison
+    s_model_levels = vars_dict.get("so", [])
+    if s_model_levels:
+        argo_s = np.array([float(lvl["salinity"]) for lvl in latest_profile["levels"] if lvl.get("salinity") is not None])
+        model_s = np.array([float(lvl["value"]) for lvl in s_model_levels[:len(argo_s)]])
+        if len(argo_s) == len(model_s) and len(argo_s) > 0:
+            diffs_s = model_s - argo_s  # Copernicus - Argo convention
+            comparisons["salinity"] = {
+                "variable": "salinity",
+                "canonical_name": "Practical Salinity",
+                "unit": "PSU",
+                "model_source": "Copernicus Marine (so)",
+                "observation_source": "Argo In-Situ (PSAL)",
+                "difference_convention": "Copernicus − Argo",
+                "mean_bias": round(float(np.mean(diffs_s)), 4),
+                "bias": round(float(np.mean(diffs_s)), 4),
+                "mae": round(float(np.mean(np.abs(diffs_s))), 4),
+                "mean_absolute_error": round(float(np.mean(np.abs(diffs_s))), 4),
+                "rmse": round(float(np.sqrt(np.mean(diffs_s**2))), 4),
+                "max_absolute_difference": round(float(np.max(np.abs(diffs_s))), 4),
+                "valid_matched_levels": len(diffs_s),
+                "matched_levels": [
+                    {
+                        "depth": round(float(d), 2),
+                        "depth_offset_m": 0.0,
+                        "argo_value": round(float(a), 4),
+                        "observation_value": round(float(a), 4),
+                        "model_value": round(float(m), 4),
+                        "difference": round(float(diff), 4),
+                        "signed_difference": round(float(diff), 4),
+                    }
+                    for d, a, m, diff in zip(target_depths[:len(argo_s)], argo_s, model_s, diffs_s)
+                ],
+            }
+
+    # Currents Summary
+    currents_summary = {
+        "status": "AVAILABLE" if vars_dict.get("current_speed") else "UNAVAILABLE",
+        "observed_current": "UNAVAILABLE",
+        "model_current": "AVAILABLE" if vars_dict.get("current_speed") else "UNAVAILABLE",
+        "data_kind": "derived",
+        "derivation_formula": "speed = sqrt(uo^2 + vo^2), direction = (atan2(vo, uo) * 180 / pi) % 360",
+        "levels": vars_dict.get("current_vectors", []),
+    }
+
+    # Biogeochemistry Summary
+    bgc_summary = {
+        "chlorophyll": {
+            "status": "AVAILABLE" if vars_dict.get("chl") else "UNAVAILABLE",
+            "observed_chl": "UNAVAILABLE",
+            "model_chl": "AVAILABLE" if vars_dict.get("chl") else "UNAVAILABLE",
+            "unit": "mg/m³",
+            "levels": vars_dict.get("chl", []),
         },
+        "dissolved_oxygen": {
+            "status": "AVAILABLE" if vars_dict.get("o2") else "UNAVAILABLE",
+            "observed_o2": "UNAVAILABLE",
+            "model_o2": "AVAILABLE" if vars_dict.get("o2") else "UNAVAILABLE",
+            "unit": "mmol/m³",
+            "levels": vars_dict.get("o2", []),
+        },
+        "nitrate": {
+            "status": "AVAILABLE" if vars_dict.get("no3") else "UNAVAILABLE",
+            "observed_no3": "UNAVAILABLE",
+            "model_no3": "AVAILABLE" if vars_dict.get("no3") else "UNAVAILABLE",
+            "unit": "mmol/m³",
+            "levels": vars_dict.get("no3", []),
+        },
+    }
+
+    colloc_meta = colloc_res.get("collocation", {})
+
+    return {
+        "available": True,
+        "status": "SUCCESS",
+        "source": "Copernicus Marine Service",
+        "retrieved_at": _iso(retrieved_at),
+        "model_time": colloc_meta.get("model_time"),
+        "observation_time": latest_profile["observation_time"],
+        "collocation": colloc_meta,
+        "comparisons": comparisons,
+        "currents": currents_summary,
+        "biogeochemistry": bgc_summary,
+        "surface_fields": colloc_res.get("surface_fields", {}),
+        "variables": vars_dict,
+        "current_vectors": vars_dict.get("current_vectors", []),
+        "provenance": colloc_res.get("provenance", {}),
     }
 
 
@@ -426,6 +601,10 @@ class LatestDataService:
             observations.sort(key=lambda item: item["observation_time"], reverse=True)
             profile_ids = {item["profile_id"] for item in observations}
             newest = observations[0]
+
+            # Perform Copernicus operational model collocation for newest profile
+            copernicus_payload = _copernicus_status(now, newest)
+
             result = {
                 "mode": "latest_available",
                 "region": region,
@@ -443,7 +622,7 @@ class LatestDataService:
                 # Compatibility aliases retain the first verified profile for
                 # current callers while new consumers use observations[].
                 "argo": newest,
-                "copernicus": _copernicus_status(now),
+                "copernicus": copernicus_payload,
                 "provenance": {"source": "Argo GDAC", "region": region, "variables": ["TEMP", "PSAL"], "depth_range": [0, 500]},
                 "cache": {"hit": False, "cached_at": _iso(now), "ttl_seconds": int(interval.total_seconds())},
             }

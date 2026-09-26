@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import os
 
 from .config import API_HOST, API_PORT, API_PREFIX
 from .datasets import close_all
@@ -30,14 +31,14 @@ app = FastAPI(
     description=(
         "Backend API for ocean model-observation comparison and visualization. "
         "Pipeline A: GLORYS×Argo scientific comparison (Jan 2024). "
-        "Pipeline B: INCOIS HYCOM 2026 model exploration."
+        "Pipeline B: INCOIS HYCOM 2026 model exploration. "
+        "Unified Research Data Retrieval: Copernicus, Argo GDAC, GLORYS, HYCOM."
     ),
     version="2.0.0",
     lifespan=lifespan,
 )
 
 # CORS — configurable for local dev and production
-import os
 _cors_origins = os.environ.get("CORS_ORIGINS", "*")
 if _cors_origins == "*":
     _allow_origins = ["*"]
@@ -84,15 +85,19 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 # Import and register routers
-from .routers import auth, health, comparison, model, diagnostics, research, latest
+from .routers import auth, health, comparison, model, diagnostics, research, latest, research_data, observations, provenance, collocation
 
 app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
 app.include_router(health.router, prefix=API_PREFIX, tags=["health"])
 app.include_router(comparison.router, prefix=API_PREFIX, tags=["comparison"])
+app.include_router(collocation.router, prefix=f"{API_PREFIX}/collocation", tags=["collocation"])
 app.include_router(model.router, prefix=API_PREFIX, tags=["model"])
 app.include_router(diagnostics.router, prefix=API_PREFIX, tags=["diagnostics"])
 app.include_router(research.router, prefix=API_PREFIX, tags=["research"])
 app.include_router(latest.router, prefix=API_PREFIX, tags=["research"])
+app.include_router(research_data.router, prefix=API_PREFIX, tags=["research"])
+app.include_router(observations.router, prefix=API_PREFIX, tags=["observations"])
+app.include_router(provenance.router, prefix=API_PREFIX, tags=["provenance"])
 
 
 @app.get("/")

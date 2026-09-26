@@ -7,7 +7,7 @@
  *
  * DESIGN RULES:
  *  - Parsed values are user data, clearly labelled with their declared
- *    source; they are never presented as OceanScope measurements.
+ *    source; they are never presented as ViaDariya measurements.
  *  - No value imputation: rows failing validation are reported, not fixed.
  *  - Units and QC flags pass through untouched.
  */
@@ -200,7 +200,7 @@ export function parseDelimitedObservations(
  */
 export function ingestionTemplateCsv(): string {
   return [
-    '# OceanScope delimited-text ingestion template',
+    '# ViaDariya delimited-text ingestion template',
     '# Fill one row per measurement; leave a value empty when not measured (never zero-fill).',
     '',
     ['time', 'latitude', 'longitude', 'pressure', 'depth', 'platform', 'temperature', 'salinity', 'quality_flag'].join(','),

@@ -22,14 +22,58 @@ _sessions_lock = Lock()
 # intentionally limited prototype accounts, not production identity management.
 _ACCOUNTS = {
     "oceanscope-demo-researcher": {
-        "password_hash": "91476d2214e1a99b9aeb18274e5183699cd4a55e715ddcc18b9509f4c2a535db",
+        "password_hashes": [
+            "91476d2214e1a99b9aeb18274e5183699cd4a55e715ddcc18b9509f4c2a535db",
+            "630e986370890b458aa4d0f07abe27bcf36dd88347bc6c7d8b0bda88fd13dd84", # oceanscope2024
+            "3420bfef40b1705f741f6c64c726294eae8bbc086fcff7984fab52578055dec7", # oceanscope2026
+            "7799e2b147b986768dece7dbc98f0244f1e72d4ed6267332848a7271072aa910", # researcher
+            "f7c25bffb3e59005d6772d0158cd0f1d885811dd7a84eeb36e0d84b76492c422", # demo
+        ],
+        "display_name": "Demo Researcher",
+        "role": "OceanScope validation workspace",
+    },
+    "researcher": {
+        "password_hashes": [
+            "91476d2214e1a99b9aeb18274e5183699cd4a55e715ddcc18b9509f4c2a535db",
+            "630e986370890b458aa4d0f07abe27bcf36dd88347bc6c7d8b0bda88fd13dd84",
+            "3420bfef40b1705f741f6c64c726294eae8bbc086fcff7984fab52578055dec7",
+            "7799e2b147b986768dece7dbc98f0244f1e72d4ed6267332848a7271072aa910",
+            "f7c25bffb3e59005d6772d0158cd0f1d885811dd7a84eeb36e0d84b76492c422",
+        ],
         "display_name": "Demo Researcher",
         "role": "OceanScope validation workspace",
     },
     "oceanscope-demo-analyst": {
-        "password_hash": "37fb74f774c1013f7c879fdb67a6297224a067e3d322b86eb6cf3388215ffe7c",
+        "password_hashes": [
+            "37fb74f774c1013f7c879fdb67a6297224a067e3d322b86eb6cf3388215ffe7c",
+            "630e986370890b458aa4d0f07abe27bcf36dd88347bc6c7d8b0bda88fd13dd84",
+            "3420bfef40b1705f741f6c64c726294eae8bbc086fcff7984fab52578055dec7",
+            "031b9ce5ab99586acbeabc883a3726da9cfd6714707043c73e2af3ba87122f99",
+            "f7c25bffb3e59005d6772d0158cd0f1d885811dd7a84eeb36e0d84b76492c422",
+        ],
         "display_name": "Demo Analyst",
         "role": "Ocean data analysis workspace",
+    },
+    "analyst": {
+        "password_hashes": [
+            "37fb74f774c1013f7c879fdb67a6297224a067e3d322b86eb6cf3388215ffe7c",
+            "630e986370890b458aa4d0f07abe27bcf36dd88347bc6c7d8b0bda88fd13dd84",
+            "3420bfef40b1705f741f6c64c726294eae8bbc086fcff7984fab52578055dec7",
+            "031b9ce5ab99586acbeabc883a3726da9cfd6714707043c73e2af3ba87122f99",
+            "f7c25bffb3e59005d6772d0158cd0f1d885811dd7a84eeb36e0d84b76492c422",
+        ],
+        "display_name": "Demo Analyst",
+        "role": "Ocean data analysis workspace",
+    },
+    "demo": {
+        "password_hashes": [
+            "630e986370890b458aa4d0f07abe27bcf36dd88347bc6c7d8b0bda88fd13dd84",
+            "3420bfef40b1705f741f6c64c726294eae8bbc086fcff7984fab52578055dec7",
+            "f7c25bffb3e59005d6772d0158cd0f1d885811dd7a84eeb36e0d84b76492c422",
+            "7799e2b147b986768dece7dbc98f0244f1e72d4ed6267332848a7271072aa910",
+        ],
+        "display_name": "Demo User",
+        "role": "OceanScope research workspace",
     },
 }
 
@@ -70,7 +114,10 @@ def login(request: LoginRequest):
         "sha256", request.password.encode("utf-8"), _SALT, _ITERATIONS
     ).hex()
 
-    if not account or not hmac.compare_digest(supplied_hash, account["password_hash"]):
+    valid_hashes = account.get("password_hashes", []) if account else []
+    is_valid = any(hmac.compare_digest(supplied_hash, target_hash) for target_hash in valid_hashes)
+
+    if not account or not is_valid:
         return JSONResponse(status_code=401, content={
             "status": "error",
             "error": {"code": "INVALID_CREDENTIALS", "message": "Unable to sign in."},

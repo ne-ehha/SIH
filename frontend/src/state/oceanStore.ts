@@ -34,13 +34,19 @@ interface OceanStore {
 
   // Observation state
   selectedObservationId: string | null;
-  researchDataMode: 'benchmark' | 'latest';
+  researchDataMode: 'benchmark' | 'latest' | 'historical';
+  canonicalDataMode: 'LIVE_NRT' | 'HISTORICAL_RESEARCH';
+  selectedPlatform: 'ARGO' | 'GLIDER' | 'CTD' | 'BGC' | 'ALL';
 
   // API state
   apiStatus: 'idle' | 'loading' | 'success' | 'error';
 
   // Globe camera triggers
   fitAllObservationsTrigger: number;
+
+  // Dynamic dataset timeline state
+  availableDates: string[];
+  datasetTemporalRange: { start: string; end: string };
 
   // Actions
   setSelectedLocation: (location: Location | null) => void;
@@ -62,8 +68,12 @@ interface OceanStore {
   setVerticalExaggeration: (value: number) => void;
   setTimeIndex: (index: number) => void;
   stepTime: (delta: number) => void;
+  setAvailableDates: (dates: string[]) => void;
+  setDatasetTemporalRange: (range: { start: string; end: string }) => void;
   setSelectedObservationId: (id: string | null) => void;
-  setResearchDataMode: (mode: 'benchmark' | 'latest') => void;
+  setResearchDataMode: (mode: 'benchmark' | 'latest' | 'historical') => void;
+  setCanonicalDataMode: (mode: 'LIVE_NRT' | 'HISTORICAL_RESEARCH') => void;
+  setSelectedPlatform: (platform: 'ARGO' | 'GLIDER' | 'CTD' | 'BGC' | 'ALL') => void;
   selectResearchObservation: (selection: { id: string; location: Location; date: string }) => void;
   clearSelectedObservation: () => void;
   setApiStatus: (status: 'idle' | 'loading' | 'success' | 'error') => void;
@@ -85,10 +95,35 @@ const defaultLayers: LayerConfig[] = [
   { id: 'currents', label: 'Currents (U/V — not connected)', enabled: false, category: 'currents', opacity: 0.8, available: false },
 ];
 
-// ── Route ↔ workspace-mode synchronization ────────────────────────────────────
-// Platform routes map 1:1 to the legacy workspace modes so that existing
-// store-driven navigation (setWorkspaceMode) and URL navigation stay in sync.
+const PLATFORM_DEFAULT_DATES: Record<string, { dates: string[]; defaultDate: string; range: { start: string; end: string } }> = {
+  ARGO: {
+    dates: ['2024-01-01', '2024-01-04', '2024-01-06', '2024-01-07', '2024-01-08', '2024-01-09', '2024-01-10', '2024-01-11', '2024-01-14'],
+    defaultDate: '2024-01-01',
+    range: { start: '2024-01-01', end: '2024-01-14' },
+  },
+  BGC: {
+    dates: ['2024-01-05', '2024-01-08'],
+    defaultDate: '2024-01-05',
+    range: { start: '2024-01-05', end: '2024-01-08' },
+  },
+  GLIDER: {
+    dates: ['2024-01-06'],
+    defaultDate: '2024-01-06',
+    range: { start: '2024-01-06', end: '2024-01-06' },
+  },
+  CTD: {
+    dates: ['2024-01-07'],
+    defaultDate: '2024-01-07',
+    range: { start: '2024-01-07', end: '2024-01-07' },
+  },
+  ALL: {
+    dates: ['2024-01-01', '2024-01-04', '2024-01-05', '2024-01-06', '2024-01-07', '2024-01-08', '2024-01-09', '2024-01-10', '2024-01-11', '2024-01-14'],
+    defaultDate: '2024-01-01',
+    range: { start: '2024-01-01', end: '2024-01-14' },
+  },
+};
 
+// ── Route ↔ workspace-mode synchronization ────────────────────────────────────
 const MODE_TO_PATH: Record<WorkspaceMode, string> = {
   overview: '/',
   globe: '/explore',
@@ -98,9 +133,18 @@ const MODE_TO_PATH: Record<WorkspaceMode, string> = {
   report: '/reports',
 };
 
-const PATH_TO_MODE: Record<string, WorkspaceMode> = Object.fromEntries(
-  Object.entries(MODE_TO_PATH).map(([mode, path]) => [path, mode as WorkspaceMode]),
-);
+const PATH_TO_MODE: Record<string, WorkspaceMode> = {
+  '/': 'overview',
+  '/explore': 'globe',
+  '/research': 'research',
+  '/profile-lab': 'research',
+  '/analysis': 'analysis',
+  '/diagnostics': 'analysis',
+  '/solutions': 'solutions',
+  '/reports': 'report',
+  '/data-services': 'overview',
+  '/api-docs': 'overview',
+};
 
 let navigateRef: ((to: string) => void) | null = null;
 
@@ -109,12 +153,12 @@ export function registerNavigator(navigate: (to: string) => void) {
   navigateRef = navigate;
 }
 
-export const useOceanStore = create<OceanStore>((set) => ({
+export const useOceanStore = create<OceanStore>((set, get) => ({
   // Initial state
   selectedLocation: null,
   selectedDepth: 0,
   selectedVariable: defaultVariable.id,
-  selectedDate: '2024-01-10',
+  selectedDate: '2024-01-01',
   selectedTime: '12:00',
   selectedRegion: defaultRegion.id,
   activeView: 'explore',
@@ -131,9 +175,13 @@ export const useOceanStore = create<OceanStore>((set) => ({
     logarithmic: false,
   },
   verticalExaggeration: 1,
-  timeIndex: 5, // '2024-01-10' within OBSERVATION_DATES
+  timeIndex: 0,
+  availableDates: PLATFORM_DEFAULT_DATES.ALL.dates,
+  datasetTemporalRange: PLATFORM_DEFAULT_DATES.ALL.range,
   selectedObservationId: null,
   researchDataMode: 'benchmark',
+  canonicalDataMode: 'HISTORICAL_RESEARCH',
+  selectedPlatform: 'ALL',
   apiStatus: 'idle',
   fitAllObservationsTrigger: 0,
 
@@ -141,23 +189,22 @@ export const useOceanStore = create<OceanStore>((set) => ({
   setSelectedLocation: (location) => set({ selectedLocation: location }),
   setSelectedDepth: (depth) => set({ selectedDepth: depth }),
   setSelectedVariable: (variable) => set({ selectedVariable: variable }),
-  // A manually chosen date cannot safely retain a marker's profile identity.
   setSelectedDate: (date) => set((state) => ({
     selectedDate: date,
     selectedObservationId: null,
-    timeIndex: Math.max(0, OBSERVATION_DATES.indexOf(date)),
+    timeIndex: Math.max(0, state.availableDates.indexOf(date)),
   })),
   setSelectedTime: (time) => set({ selectedTime: time }),
   setSelectedRegion: (region) => set({ selectedRegion: region }),
   setActiveView: (view) => set({ activeView: view }),
   setWorkspaceMode: (mode) => {
-    set({ workspaceMode: mode });
+    set({ workspaceMode: mode, isModelViewOpen: false });
     // Keep the URL synchronized with store-driven navigation.
     navigateRef?.(MODE_TO_PATH[mode]);
   },
   syncWorkspaceModeFromPath: (path) => {
-    const mode = PATH_TO_MODE[path];
-    if (mode) set({ workspaceMode: mode });
+    const mode = PATH_TO_MODE[path] || 'overview';
+    set({ workspaceMode: mode, isModelViewOpen: false });
   },
   setSelectedNav: (nav) => set({ selectedNav: nav }),
   setIsModelViewOpen: (open) => set({ isModelViewOpen: open }),
@@ -181,34 +228,77 @@ export const useOceanStore = create<OceanStore>((set) => ({
   setVerticalExaggeration: (value) =>
     set({ verticalExaggeration: Math.max(1, Math.min(5, value)) }),
   setTimeIndex: (index) => {
-    const clamped = Math.max(0, Math.min(OBSERVATION_DATES.length - 1, index));
+    const dates = get().availableDates;
+    const clamped = Math.max(0, Math.min(dates.length - 1, index));
     set({
       timeIndex: clamped,
-      selectedDate: OBSERVATION_DATES[clamped],
-      // Changing time invalidates the retained profile identity.
+      selectedDate: dates[clamped] || '2024-01-01',
       selectedObservationId: null,
     });
   },
   stepTime: (delta) => {
     set((state) => {
-      const next = Math.max(0, Math.min(OBSERVATION_DATES.length - 1, state.timeIndex + delta));
+      const dates = state.availableDates;
+      const next = Math.max(0, Math.min(dates.length - 1, state.timeIndex + delta));
       if (next === state.timeIndex) return state;
       return {
         timeIndex: next,
-        selectedDate: OBSERVATION_DATES[next],
+        selectedDate: dates[next] || state.selectedDate,
         selectedObservationId: null,
       };
     });
   },
+  setAvailableDates: (dates) => set((state) => {
+    if (!dates || dates.length === 0) return state;
+    const isCurrentValid = dates.includes(state.selectedDate);
+    const newDate = isCurrentValid ? state.selectedDate : dates[0];
+    const newIdx = Math.max(0, dates.indexOf(newDate));
+    return {
+      availableDates: dates,
+      selectedDate: newDate,
+      timeIndex: newIdx,
+    };
+  }),
+  setDatasetTemporalRange: (range) => set({ datasetTemporalRange: range }),
   setSelectedObservationId: (id) => set({ selectedObservationId: id }),
-  setResearchDataMode: (mode) => set({ researchDataMode: mode }),
+  setResearchDataMode: (mode) => set({
+    researchDataMode: mode,
+    canonicalDataMode: mode === 'latest' ? 'LIVE_NRT' : 'HISTORICAL_RESEARCH',
+  }),
+  setCanonicalDataMode: (mode) => set({
+    canonicalDataMode: mode,
+    researchDataMode: mode === 'LIVE_NRT' ? 'latest' : 'benchmark',
+  }),
+  setSelectedPlatform: (platform) => {
+    const meta = PLATFORM_DEFAULT_DATES[platform] || PLATFORM_DEFAULT_DATES.ALL;
+    set({
+      selectedPlatform: platform,
+      selectedObservationId: null,
+      selectedLocation: null,
+      availableDates: meta.dates,
+      selectedDate: meta.defaultDate,
+      datasetTemporalRange: meta.range,
+      timeIndex: 0,
+    });
+  },
   // Keep marker identity, location, and observation date atomic for Research Mode.
-  selectResearchObservation: ({ id, location, date }) => set((state) => ({
-    selectedObservationId: id,
-    selectedLocation: location,
-    selectedDate: date,
-    timeIndex: Math.max(0, OBSERVATION_DATES.indexOf(date)),
-  })),
+  selectResearchObservation: ({ id, location, date }) => set((state) => {
+    const isLatest = id.startsWith('latest_argo_') || id.startsWith('latest_');
+    const isGlider = id.startsWith('glider_');
+    const isCtd = id.startsWith('ctd_');
+    const isBgc = id.startsWith('bgc_');
+    const detectedPlatform = isGlider ? 'GLIDER' : isCtd ? 'CTD' : isBgc ? 'BGC' : 'ARGO';
+
+    return {
+      selectedObservationId: id,
+      selectedLocation: location,
+      selectedDate: date,
+      researchDataMode: isLatest ? 'latest' : 'benchmark',
+      canonicalDataMode: isLatest ? 'LIVE_NRT' : 'HISTORICAL_RESEARCH',
+      selectedPlatform: detectedPlatform,
+      timeIndex: Math.max(0, state.availableDates.indexOf(date)),
+    };
+  }),
   clearSelectedObservation: () => set({ selectedObservationId: null }),
   setApiStatus: (status) => set({ apiStatus: status }),
   triggerFitAllObservations: () => set((state) => ({ fitAllObservationsTrigger: state.fitAllObservationsTrigger + 1 })),
@@ -217,7 +307,7 @@ export const useOceanStore = create<OceanStore>((set) => ({
       selectedLocation: null,
       selectedDepth: 0,
       selectedVariable: defaultVariable.id,
-      selectedDate: '2024-01-10',
+      selectedDate: '2024-01-01',
       selectedTime: '12:00',
       selectedRegion: defaultRegion.id,
       selectedObservationId: null,
