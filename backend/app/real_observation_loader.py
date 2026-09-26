@@ -16,7 +16,19 @@ import netCDF4 as nc
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-RAW_DIR = PROJECT_ROOT / "backend" / "data" / "raw"
+
+def _find_raw_dir() -> Path:
+    candidates = [
+        Path(__file__).resolve().parent.parent / "data" / "raw",
+        PROJECT_ROOT / "backend" / "data" / "raw",
+        PROJECT_ROOT / "data" / "raw",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
+
+RAW_DIR = _find_raw_dir()
 
 
 def sha256_file(filepath: Path) -> str:

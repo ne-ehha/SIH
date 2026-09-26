@@ -37,6 +37,7 @@ import {
   evaluateScientificCollocation,
   type ScientificCollocationState,
 } from '@/services/scientificCollocationService';
+import { useWorkspaceTransition } from '@/components/layout/WorkspaceTransition';
 import type { CanonicalQCStatus } from '@/types/observation';
 
 export type WorkstationProperty =
@@ -200,6 +201,7 @@ export const ResearchWorkstation: React.FC = () => {
   }, []);
 
   const isResearchRoute = location.pathname === '/research';
+  const { isTransitioning } = useWorkspaceTransition();
 
   const {
     selectedLocation,
@@ -602,41 +604,47 @@ export const ResearchWorkstation: React.FC = () => {
 
             {/* Inverted Pyramid Scene Canvas */}
             <div className="flex-1 relative rounded border border-slate-800/80 bg-[#050912] overflow-hidden mt-2 min-h-[300px]">
-              <DepthInspectorScene
-                className="h-full w-full"
-                profilePoints={sceneProfilePoints}
-                unit={currentUnit}
-                variable={activeProperty}
-                selectedDepth={selectedDepth}
-                verticalExaggeration={verticalExaggeration}
-                colorScale={colorScale}
-                renderMode="variables"
-                mode={researchDataMode}
-                currentVectors={currentVectors}
-                observationPlatform={selectedPlatform}
-                observationLabel={scientificRef.observationLabel}
-                modelLabel={scientificRef.modelShortName}
-                maxDepthRef={maxDepthRef}
-                layers={{
-                  argo: {
-                    visible: collocation.state !== 'MODEL_AVAILABLE_OBSERVATION_UNAVAILABLE' && (activeLayers.find((l) => l.id === 'observations')?.enabled ?? true),
-                    opacity: activeLayers.find((l) => l.id === 'observations')?.opacity ?? 1,
-                  },
-                  glorys: {
-                    visible: activeLayers.find((l) => l.id === 'models')?.enabled ?? true,
-                    opacity: activeLayers.find((l) => l.id === 'models')?.opacity ?? 1,
-                  },
-                  discrepancies: {
-                    visible: collocation.is_comparison_valid && (activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? true),
-                    opacity: activeLayers.find((l) => l.id === 'discrepancies')?.opacity ?? 0.85,
-                  },
-                  depthSlice: {
-                    visible: activeLayers.find((l) => l.id === 'depthSlice')?.enabled ?? true,
-                    opacity: activeLayers.find((l) => l.id === 'depthSlice')?.opacity ?? 1,
-                  },
-                }}
-                viewControlsRef={viewControlsRef}
-              />
+              {isTransitioning ? (
+                <div className="absolute inset-0 bg-[#050912] flex items-center justify-center font-mono text-xs text-slate-500">
+                  Preparing 3D Inverted Pyramid Canvas...
+                </div>
+              ) : (
+                <DepthInspectorScene
+                  className="h-full w-full"
+                  profilePoints={sceneProfilePoints}
+                  unit={currentUnit}
+                  variable={activeProperty}
+                  selectedDepth={selectedDepth}
+                  verticalExaggeration={verticalExaggeration}
+                  colorScale={colorScale}
+                  renderMode="variables"
+                  mode={researchDataMode}
+                  currentVectors={currentVectors}
+                  observationPlatform={selectedPlatform}
+                  observationLabel={scientificRef.observationLabel}
+                  modelLabel={scientificRef.modelShortName}
+                  maxDepthRef={maxDepthRef}
+                  layers={{
+                    argo: {
+                      visible: collocation.state !== 'MODEL_AVAILABLE_OBSERVATION_UNAVAILABLE' && (activeLayers.find((l) => l.id === 'observations')?.enabled ?? true),
+                      opacity: activeLayers.find((l) => l.id === 'observations')?.opacity ?? 1,
+                    },
+                    glorys: {
+                      visible: activeLayers.find((l) => l.id === 'models')?.enabled ?? true,
+                      opacity: activeLayers.find((l) => l.id === 'models')?.opacity ?? 1,
+                    },
+                    discrepancies: {
+                      visible: collocation.is_comparison_valid && (activeLayers.find((l) => l.id === 'discrepancies')?.enabled ?? true),
+                      opacity: activeLayers.find((l) => l.id === 'discrepancies')?.opacity ?? 0.85,
+                    },
+                    depthSlice: {
+                      visible: activeLayers.find((l) => l.id === 'depthSlice')?.enabled ?? true,
+                      opacity: activeLayers.find((l) => l.id === 'depthSlice')?.opacity ?? 1,
+                    },
+                  }}
+                  viewControlsRef={viewControlsRef}
+                />
+              )}
 
               <div className="absolute right-3 top-3 z-10 flex gap-1.5" aria-label="3D view controls">
                 <button type="button" onClick={() => viewControlsRef.current?.zoomIn()} className="rounded border border-slate-700 bg-[#09101d]/95 px-2 py-1 text-[10px] text-slate-200 hover:border-cyan-500 cursor-pointer">

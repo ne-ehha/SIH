@@ -15,7 +15,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-RAW_ARCHIVE_DIR = PROJECT_ROOT / "backend" / "data" / "raw"
+
+def _find_raw_archive_dir() -> Path:
+    candidates = [
+        Path(__file__).resolve().parent.parent / "data" / "raw",
+        PROJECT_ROOT / "backend" / "data" / "raw",
+        PROJECT_ROOT / "data" / "raw",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
+
+RAW_ARCHIVE_DIR = _find_raw_archive_dir()
 
 
 def utc_now_iso() -> str:

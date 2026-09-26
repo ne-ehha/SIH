@@ -182,8 +182,10 @@ class ObservationDiscoveryService:
         # Score & Rank candidates
         ranked_candidates = []
         for cand in candidates:
+            is_exact_profile = bool(query.profile_id and (query.profile_id == cand.get("profile_id") or query.profile_id in str(cand.get("profile_id")) or query.profile_id in str(cand.get("platform_id"))))
+
             dist_km = haversine_distance_km(query.latitude, query.longitude, cand["latitude"], cand["longitude"])
-            if dist_km > effective_radius:
+            if not is_exact_profile and dist_km > effective_radius:
                 continue
 
             cand_time = cand["observed_at"]
@@ -193,7 +195,7 @@ class ObservationDiscoveryService:
                 cand_dt = cand_time
 
             time_diff_hours = abs((cand_dt.replace(tzinfo=timezone.utc) - target_time.replace(tzinfo=timezone.utc)).total_seconds()) / 3600.0
-            if time_diff_hours > query.max_temporal_hours:
+            if not is_exact_profile and time_diff_hours > query.max_temporal_hours:
                 continue
 
             # Check variable availability in profile
@@ -206,7 +208,6 @@ class ObservationDiscoveryService:
 
             # Score: lower is better
             # Heavily prioritize profiles that actually contain the requested variable, match profile_id, and have valid QC
-            is_exact_profile = bool(query.profile_id and (query.profile_id == cand.get("profile_id") or query.profile_id in str(cand.get("profile_id")) or query.profile_id in str(cand.get("platform_id"))))
             score = (
                 (-10000.0 if is_exact_profile else 0.0)
                 + (0.0 if has_requested_var else 500.0)
