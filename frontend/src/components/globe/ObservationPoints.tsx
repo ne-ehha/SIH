@@ -28,6 +28,7 @@ export function ObservationPoints() {
       .then((res) => {
         const raw = res.profiles || [];
         setAllProfiles(raw);
+        console.log(`[DEPLOYED DATA] platform=${selectedPlatform} profilesReturned=${res.total_profiles ?? raw.length} profilesAfterNormalization=${raw.length} profilesAfterPlatformFilter=${raw.length}`);
         if (res.temporal_range) {
           setTemporalRange(res.temporal_range);
           setDatasetTemporalRange(res.temporal_range);

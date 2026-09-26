@@ -508,7 +508,8 @@ export function OceanGlobe() {
 
       markersRef.current.push(entity);
     });
-  }, [observations, selectedObservationId, sceneImageryReady, observationsVisible, observationsOpacity]);
+    console.log(`[DEPLOYED DATA] platform=${selectedPlatform} markersRendered=${markersRef.current.length}`);
+  }, [observations, selectedObservationId, sceneImageryReady, observationsVisible, observationsOpacity, selectedPlatform]);
 
   // Show selected coordinate marker
   useEffect(() => {
