@@ -84,7 +84,8 @@ export function OceanGlobe() {
           return 'argo';
         };
         const raw = res.profiles || [];
-        const filtered = selectedDate ? raw.filter((p) => p.observation_time.startsWith(selectedDate)) : raw;
+        const dateMatched = selectedDate ? raw.filter((p) => p.observation_time.startsWith(selectedDate)) : raw;
+        const filtered = dateMatched.length === 0 && selectedPlatform !== 'ALL' && raw.length > 0 ? raw : dateMatched;
         const pts: ObservationPoint[] = filtered.map((p) => ({
           id: p.profile_id,
           latitude: p.latitude,

@@ -101,11 +101,12 @@ class ObservationDiscoveryService:
         plat = query.platform or "ALL"
         var = query.variable or "ALL"
         mode = query.data_mode or "ALL"
+        pid = query.profile_id or "ANY"
         lat_q = round(query.latitude, 2)
         lon_q = round(query.longitude, 2)
         time_tag = query.target_datetime or query.start_datetime or "LATEST"
         rad = round(query.radius_km, 1)
-        return f"obs_disc:{plat}:{var}:{mode}:{lat_q}:{lon_q}:{time_tag}:{rad}"
+        return f"obs_disc:{plat}:{var}:{mode}:{pid}:{lat_q}:{lon_q}:{time_tag}:{rad}"
 
     def discover(self, query: ObservationDiscoveryQuery) -> ObservationDiscoveryResponse:
         now_ts = time.time()
@@ -204,9 +205,11 @@ class ObservationDiscoveryService:
             valid_levels_count = len(levels)
 
             # Score: lower is better
-            # Heavily prioritize profiles that actually contain the requested variable and have valid QC
+            # Heavily prioritize profiles that actually contain the requested variable, match profile_id, and have valid QC
+            is_exact_profile = bool(query.profile_id and (query.profile_id == cand.get("profile_id") or query.profile_id in str(cand.get("profile_id")) or query.profile_id in str(cand.get("platform_id"))))
             score = (
-                (0.0 if has_requested_var else 500.0)
+                (-10000.0 if is_exact_profile else 0.0)
+                + (0.0 if has_requested_var else 500.0)
                 + (dist_km / max(query.radius_km, 1.0)) * 10.0
                 + (time_diff_hours / max(query.max_temporal_hours, 1.0)) * 10.0
                 - min(valid_levels_count, 50) * 0.1

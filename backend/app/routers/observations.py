@@ -42,6 +42,7 @@ def discover_observations_get(
     variable: Optional[str] = Query(None, description="Target scientific variable (e.g. 'thetao', 'so', 'chl', 'o2', 'no3')"),
     radius_km: float = Query(300.0, ge=1.0, le=2000.0, description="Maximum search radius in kilometers"),
     max_temporal_hours: float = Query(720.0, ge=1.0, le=8760.0, description="Maximum temporal separation in hours (default 30 days)"),
+    profile_id: Optional[str] = Query(None, description="Exact target profile ID (e.g. 'bgc_argo_6903093_1', 'ctd_06AQ20101128_stn13')"),
     data_mode: Optional[CanonicalDataMode] = Query(None, description="Data mode filter: 'LIVE_NRT' or 'HISTORICAL_RESEARCH'"),
 ):
     query = ObservationDiscoveryQuery(
@@ -54,6 +55,7 @@ def discover_observations_get(
         variable=variable,
         radius_km=radius_km,
         max_temporal_hours=max_temporal_hours,
+        profile_id=profile_id,
         data_mode=data_mode,
     )
     return observation_discovery_service.discover(query)

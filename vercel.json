@@ -31,7 +31,7 @@
   ],
   "functions": {
     "api/index.py": {
-      "includeFiles": "backend/**",
+      "includeFiles": "{backend/**,*.nc,*.csv,processed/**}",
       "maxDuration": 30
     }
   }

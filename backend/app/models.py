@@ -501,6 +501,7 @@ class ObservationDiscoveryQuery(BaseModel):
     variable: Optional[str] = None
     radius_km: float = Field(default=300.0, ge=1.0, le=2000.0)
     max_temporal_hours: float = Field(default=720.0, ge=1.0, le=8760.0)
+    profile_id: Optional[str] = None
     data_mode: Optional[CanonicalDataMode] = None
 
 

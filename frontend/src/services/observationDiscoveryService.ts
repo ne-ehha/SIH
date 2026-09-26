@@ -11,8 +11,11 @@ export interface ObservationDiscoveryParams {
   variable?: string;
   radius_km?: number;
   max_temporal_hours?: number;
+  profile_id?: string;
   data_mode?: CanonicalDataMode;
 }
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 const discoveryCache = new Map<string, { response: ObservationDiscoveryResponse; timestamp: number }>();
 const pendingRequests = new Map<string, Promise<ObservationDiscoveryResponse>>();
@@ -24,6 +27,7 @@ function buildCacheKey(params: ObservationDiscoveryParams): string {
     params.longitude.toFixed(2),
     params.platform || 'ALL',
     params.variable || 'ALL',
+    params.profile_id || 'ALL',
     params.data_mode || 'ALL',
     params.target_datetime || params.start_datetime || 'LATEST',
     (params.radius_km ?? 300).toFixed(0),
@@ -55,6 +59,9 @@ export async function discoverObservations(
   if (params.variable) {
     queryParams.set('variable', params.variable);
   }
+  if (params.profile_id) {
+    queryParams.set('profile_id', params.profile_id);
+  }
   if (params.target_datetime) {
     queryParams.set('target_datetime', params.target_datetime);
   }
@@ -76,7 +83,7 @@ export async function discoverObservations(
 
   const requestPromise = (async () => {
     try {
-      const res = await fetch(`/api/v1/observations/discover?${queryParams.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/observations/discover?${queryParams.toString()}`);
       if (!res.ok) {
         throw new Error(`Discovery request failed with HTTP ${res.status}`);
       }
@@ -138,7 +145,7 @@ export async function fetchDatasetProfiles(
   if (dataMode) {
     queryParams.set('data_mode', dataMode);
   }
-  const res = await fetch(`/api/v1/observations/profiles?${queryParams.toString()}`);
+  const res = await fetch(`${API_BASE_URL}/api/v1/observations/profiles?${queryParams.toString()}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch dataset profiles (HTTP ${res.status})`);
   }

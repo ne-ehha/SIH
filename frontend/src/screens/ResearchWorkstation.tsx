@@ -365,7 +365,7 @@ export const ResearchWorkstation: React.FC = () => {
       discoveryStatus: discoveryHook.status,
       modelLevels,
       modelSurfaceField,
-      modelTime: copernicusData?.collocation?.model_time || (researchDataMode === 'benchmark' ? selectedDate : undefined),
+      modelTime: copernicusData?.collocation?.model_time || (researchDataMode === 'benchmark' && discoveryHook.selectedProfile?.observation_timestamp ? discoveryHook.selectedProfile.observation_timestamp.slice(0, 10) : selectedDate),
       modelLocation: discoveryHook.selectedProfile
         ? [discoveryHook.selectedProfile.latitude, discoveryHook.selectedProfile.longitude]
         : (selectedLocation ? [selectedLocation.latitude, selectedLocation.longitude] : undefined),
@@ -801,7 +801,7 @@ export const ResearchWorkstation: React.FC = () => {
               ) : (
                 /* Historical Multi-Platform Discovered Profile Options */
                 [
-                  { id: 'bgc_argo_6903093_1', label: 'BGC 6903093', type: 'BGC', sub: 'INCOIS BGC-Argo', vars: 'T, S, Chl, O2, NO3', lat: 9.86, lon: 89.28, date: '2024-01-08' },
+                  { id: 'bgc_argo_6903093_1', label: 'BGC 6903093', type: 'BGC', sub: 'INCOIS BGC-Argo', vars: 'T, S, Chl, O2, NO3', lat: 13.25, lon: 88.40, date: '2024-01-08' },
                   { id: 'glider_SL416_m1', label: 'GLIDER SL416', type: 'GLIDER', sub: 'OceanGliders Mission', vars: 'T, S, Chl', lat: 13.90, lon: 87.50, date: '2024-01-06' },
                   { id: 'ctd_06AQ20101128_stn13', label: 'CTD STN 13', type: 'CTD', sub: 'CCHDO WOCE/GO-SHIP', vars: 'T, S, O2, Chl', lat: 12.80, lon: 86.90, date: '2024-01-07' },
                   { id: 'argo_2902766_14', label: 'ARGO 2902766', type: 'ARGO', sub: 'Argo DM BOB', vars: 'T, S', lat: 14.28, lon: 88.52, date: '2024-01-06' },

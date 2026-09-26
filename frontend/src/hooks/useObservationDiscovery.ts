@@ -36,6 +36,7 @@ export function useObservationDiscovery(options?: {
     selectedTime,
     selectedPlatform,
     canonicalDataMode,
+    selectedObservationId,
   } = useOceanStore();
 
   const [discovery, setDiscovery] = useState<ObservationDiscoveryResponse | null>(null);
@@ -63,8 +64,9 @@ export function useObservationDiscovery(options?: {
       target_datetime: targetDt,
       platform: activePlatform !== 'ALL' ? activePlatform : undefined,
       variable: activeVariable,
-      radius_km: 350.0,
+      radius_km: 500.0,
       max_temporal_hours: 720.0, // 30 days window
+      profile_id: selectedObservationId || undefined,
       data_mode: canonicalDataMode,
     };
 
@@ -77,7 +79,7 @@ export function useObservationDiscovery(options?: {
     } finally {
       setLoading(false);
     }
-  }, [enabled, lat, lon, targetDt, activePlatform, activeVariable, canonicalDataMode]);
+  }, [enabled, lat, lon, targetDt, activePlatform, activeVariable, selectedObservationId, canonicalDataMode]);
 
   useEffect(() => {
     performDiscovery();

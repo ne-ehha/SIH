@@ -9,10 +9,24 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-HYCOM_FILE = PROJECT_ROOT / "RSMC_hycom_20260827.nc"
-ARGO_FILE = PROJECT_ROOT / "argo_dm_BOB_2024.nc"
-COLLOCATION_FILE = PROJECT_ROOT / "backend" / "data" / "glorys_argo_collocation_2024.nc"
-ARGO_INDEX_FILE = PROJECT_ROOT / "argo_dm_BOB_index.csv"
+def _find_data_file(filename: str, preferred_dir: str = "") -> Path:
+    candidates = []
+    if preferred_dir:
+        candidates.append(PROJECT_ROOT / preferred_dir / filename)
+    candidates.extend([
+        PROJECT_ROOT / filename,
+        PROJECT_ROOT / "backend" / "data" / filename,
+        PROJECT_ROOT / "processed" / filename,
+    ])
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[0] if candidates else PROJECT_ROOT / filename
+
+HYCOM_FILE = _find_data_file("RSMC_hycom_20260827.nc")
+ARGO_FILE = _find_data_file("argo_dm_BOB_2024.nc", "backend/data")
+COLLOCATION_FILE = _find_data_file("glorys_argo_collocation_2024.nc", "backend/data")
+ARGO_INDEX_FILE = _find_data_file("argo_dm_BOB_index.csv", "backend/data")
 
 # ── API configuration ────────────────────────────────────────────────────────
 

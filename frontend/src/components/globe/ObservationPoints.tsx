@@ -19,9 +19,11 @@ export function ObservationPoints() {
   const [allProfiles, setAllProfiles] = useState<DatasetProfileSummary[]>([]);
   const [temporalRange, setTemporalRange] = useState<{ start: string; end: string }>({ start: '2024-01-01', end: '2024-01-15' });
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     fetchDatasetProfiles(selectedPlatform, 'HISTORICAL_RESEARCH')
       .then((res) => {
         const raw = res.profiles || [];
@@ -34,16 +36,21 @@ export function ObservationPoints() {
           setAvailableDates(res.available_dates);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         setAllProfiles([]);
+        setError(err instanceof Error ? err.message : 'Backend unavailable');
       })
       .finally(() => setLoading(false));
   }, [selectedPlatform, setAvailableDates, setDatasetTemporalRange]);
 
   const profiles = useMemo(() => {
     if (!selectedDate) return allProfiles;
-    return allProfiles.filter((p: DatasetProfileSummary) => p.observation_time.startsWith(selectedDate));
-  }, [allProfiles, selectedDate]);
+    const dateMatched = allProfiles.filter((p: DatasetProfileSummary) => p.observation_time.startsWith(selectedDate));
+    if (dateMatched.length === 0 && selectedPlatform !== 'ALL' && allProfiles.length > 0) {
+      return allProfiles;
+    }
+    return dateMatched;
+  }, [allProfiles, selectedDate, selectedPlatform]);
 
   const handleProfileClick = (p: DatasetProfileSummary) => {
     selectResearchObservation({
@@ -166,8 +173,12 @@ export function ObservationPoints() {
                 );
               })
             ) : (
-              <div className="py-4 text-center text-slate-500 text-[10px]">
-                {loading ? 'Searching real station profiles...' : 'No in-situ stations found for this platform filter.'}
+              <div className="py-4 text-center text-slate-500 text-[10px] px-2">
+                {loading
+                  ? 'Searching real station profiles...'
+                  : error
+                  ? <span className="text-rose-400 font-bold">API ERROR: {error}</span>
+                  : 'No in-situ stations found for this platform filter.'}
               </div>
             )}
           </div>
