@@ -44,13 +44,8 @@ export function ObservationPoints() {
   }, [selectedPlatform, setAvailableDates, setDatasetTemporalRange]);
 
   const profiles = useMemo(() => {
-    if (!selectedDate) return allProfiles;
-    const dateMatched = allProfiles.filter((p: DatasetProfileSummary) => p.observation_time.startsWith(selectedDate));
-    if (dateMatched.length === 0 && selectedPlatform !== 'ALL' && allProfiles.length > 0) {
-      return allProfiles;
-    }
-    return dateMatched;
-  }, [allProfiles, selectedDate, selectedPlatform]);
+    return allProfiles;
+  }, [allProfiles]);
 
   const handleProfileClick = (p: DatasetProfileSummary) => {
     selectResearchObservation({

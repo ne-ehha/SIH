@@ -123,6 +123,13 @@ const PLATFORM_DEFAULT_DATES: Record<string, { dates: string[]; defaultDate: str
   },
 };
 
+const PLATFORM_DEFAULT_LOCATIONS: Record<string, { location: Location; id: string }> = {
+  ARGO: { location: { latitude: 13.34, longitude: 88.35 }, id: 'argo_4903775' },
+  BGC: { location: { latitude: 13.25, longitude: 88.40 }, id: 'bgc_argo_6903093_1' },
+  GLIDER: { location: { latitude: 13.90, longitude: 87.50 }, id: 'glider_SL416_m1' },
+  CTD: { location: { latitude: 12.80, longitude: 86.90 }, id: 'ctd_06AQ20101128_stn13' },
+};
+
 // ── Route ↔ workspace-mode synchronization ────────────────────────────────────
 const MODE_TO_PATH: Record<WorkspaceMode, string> = {
   overview: '/',
@@ -271,10 +278,11 @@ export const useOceanStore = create<OceanStore>((set, get) => ({
   }),
   setSelectedPlatform: (platform) => {
     const meta = PLATFORM_DEFAULT_DATES[platform] || PLATFORM_DEFAULT_DATES.ALL;
+    const defaultTarget = platform !== 'ALL' ? PLATFORM_DEFAULT_LOCATIONS[platform] : null;
     set({
       selectedPlatform: platform,
-      selectedObservationId: null,
-      selectedLocation: null,
+      selectedObservationId: defaultTarget ? defaultTarget.id : null,
+      selectedLocation: defaultTarget ? defaultTarget.location : null,
       availableDates: meta.dates,
       selectedDate: meta.defaultDate,
       datasetTemporalRange: meta.range,

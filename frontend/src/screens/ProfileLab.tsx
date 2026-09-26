@@ -60,7 +60,8 @@ const KNOWN_STATIONS = [
   { id: 'argo_2902766_14', platform: 'ARGO', name: 'Argo Float #2902766 (Cycle 14)', lat: 14.28, lon: 88.52, date: '2024-01-08' },
   { id: 'argo_2902087_1', platform: 'ARGO', name: 'Argo Float #2902087 (Cycle 1)', lat: 12.35, lon: 87.12, date: '2024-01-05' },
   { id: 'argo_2902088_3', platform: 'ARGO', name: 'Argo Float #2902088 (Cycle 3)', lat: 15.62, lon: 89.44, date: '2024-01-11' },
-  { id: 'bgc_argo_6903093_1', platform: 'BGC', name: 'BGC-Argo #6903093 (Cycle 1 · O₂/Chl)', lat: 9.86, lon: 89.28, date: '2024-01-04' },
+  { id: 'bgc_argo_6903093_1', platform: 'BGC', name: 'BGC-Argo #6903093 (Cycle 1 · O₂/Chl)', lat: 13.25, lon: 88.40, date: '2024-01-05' },
+  { id: 'bgc_argo_5906248_1', platform: 'BGC', name: 'BGC-Argo #5906248 (Cycle 1 · O₂/Chl)', lat: -60.41, lon: -63.23, date: '2024-01-08' },
   { id: 'glider_SL416_m1', platform: 'GLIDER', name: 'Ocean Glider SL416 (Mission 1)', lat: 13.90, lon: 87.50, date: '2024-01-06' },
   { id: 'ctd_06AQ20101128_stn13', platform: 'CTD', name: 'Ship CTD 06AQ20101128 (Stn 13)', lat: 12.80, lon: 86.90, date: '2024-01-07' },
 ];

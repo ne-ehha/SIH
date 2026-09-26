@@ -84,9 +84,7 @@ export function OceanGlobe() {
           return 'argo';
         };
         const raw = res.profiles || [];
-        const dateMatched = selectedDate ? raw.filter((p) => p.observation_time.startsWith(selectedDate)) : raw;
-        const filtered = dateMatched.length === 0 && selectedPlatform !== 'ALL' && raw.length > 0 ? raw : dateMatched;
-        const pts: ObservationPoint[] = filtered.map((p) => ({
+        const pts: ObservationPoint[] = raw.map((p) => ({
           id: p.profile_id,
           latitude: p.latitude,
           longitude: p.longitude,
@@ -108,7 +106,7 @@ export function OceanGlobe() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlatform, selectedRegion, selectedDate]);
+  }, [selectedPlatform, selectedRegion]);
 
   // Store observations in a ref so the click handler can access them
   const observationsRef = useRef<ObservationPoint[]>([]);

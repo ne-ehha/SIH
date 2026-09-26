@@ -74,15 +74,32 @@ export const SpatialTemporalWorkspace: React.FC = () => {
   const currentLegend = layerLegends[selectedVariable === 'salinity' ? 'salinity' : 'temperature'];
 
   // Parse platform and cycle from observation ID
-  let platformLabel = '';
-  let cycleLabel = '';
+  let displayTitle = 'Observation Profile';
+  let badgeLabel = 'IN-SITU';
   if (selectedObservationId) {
-    const parts = selectedObservationId.split('_');
-    if (parts.length >= 3) {
-      platformLabel = parts[0] === 'argo' ? `ARGO ${parts[1]}` : `${parts[0].toUpperCase()} ${parts[1]}`;
-      cycleLabel = parts[2];
+    if (selectedObservationId.startsWith('bgc_argo_')) {
+      const parts = selectedObservationId.replace('bgc_argo_', '').split('_');
+      displayTitle = `BGC-ARGO ${parts[0]}`;
+      badgeLabel = `CYCLE #${parts[1] || '1'}`;
+    } else if (selectedObservationId.startsWith('glider_')) {
+      const parts = selectedObservationId.replace('glider_', '').split('_');
+      displayTitle = `GLIDER ${parts[0]}`;
+      badgeLabel = parts[1] ? `MISSION #${parts[1]}` : 'MISSION';
+    } else if (selectedObservationId.startsWith('ctd_')) {
+      const parts = selectedObservationId.replace('ctd_', '').split('_');
+      displayTitle = `CTD ${parts[0]}`;
+      badgeLabel = parts[1] ? parts[1].toUpperCase() : 'CAST';
+    } else if (selectedObservationId.startsWith('latest_argo_')) {
+      const parts = selectedObservationId.replace('latest_argo_', '').split('_');
+      displayTitle = `LIVE ARGO ${parts[0]}`;
+      badgeLabel = parts[1] ? `CYCLE #${parts[1]}` : 'LIVE';
+    } else if (selectedObservationId.startsWith('argo_')) {
+      const parts = selectedObservationId.replace('argo_', '').split('_');
+      displayTitle = `ARGO ${parts[0]}`;
+      badgeLabel = parts[1] ? `CYCLE #${parts[1]}` : 'CYCLE #14';
     } else {
-      platformLabel = selectedObservationId.toUpperCase();
+      displayTitle = selectedObservationId.toUpperCase();
+      badgeLabel = 'PROFILE';
     }
   }
 
@@ -264,9 +281,9 @@ export const SpatialTemporalWorkspace: React.FC = () => {
             {selectedObservationId ? (
               <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-cyan-400 font-bold">ARGO {platformLabel}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 bg-cyan-950 text-cyan-300 rounded border border-cyan-800/60">
-                    CYCLE #{cycleLabel}
+                  <span className="text-cyan-400 font-bold">{displayTitle}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 bg-cyan-950 text-cyan-300 rounded border border-cyan-800/60 font-mono">
+                    {badgeLabel}
                   </span>
                 </div>
                 <div className="text-slate-300 text-[11px] font-sans font-medium">
